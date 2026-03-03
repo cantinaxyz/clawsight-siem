@@ -38,8 +38,15 @@ export function ActivityBreakdownPie({
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-4">
-          <div className="h-52 w-52 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-52 w-52 min-h-52 min-w-52 shrink-0">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={208}
+              minHeight={208}
+              debounce={150}
+              initialDimension={{ width: 208, height: 208 }}
+            >
               <PieChart>
                 <Pie
                   data={data}

@@ -15,27 +15,39 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@radix-ui/react-slot": "1.1.1",
-    "@prisma/client": "^5.22.0",
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "@radix-ui/react-slot": "1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.544.0",
+    "dotenv": "^17.3.1",
+    "lucide-react": "^0.576.0",
     "next": "16.1.6",
-    "prisma": "^5.22.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "recharts": "2.15.0",
-    "tailwind-merge": "^2.5.5"
+    "pg": "^8.19.0",
+    "prisma": "^7.4.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "3.7.0",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.13",
-    "@types/node": "^22",
-    "@types/react": "19.2.7",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^25.3.3",
+    "@types/pg": "^8.18.0",
+    "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "eslint": "^9.0.0",
+    "eslint": "^9.39.3",
     "eslint-config-next": "^16.1.6",
-    "postcss": "^8.5",
-    "tailwindcss": "^3.4.17",
-    "typescript": "5.7.3"
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "hono@4.11.4": "4.12.4",
+      "lodash@4.17.21": "4.17.23",
+      "minimatch@3.1.2": "3.1.5",
+      "minimatch@9.0.5": "9.0.9"
+    }
   }
 }
