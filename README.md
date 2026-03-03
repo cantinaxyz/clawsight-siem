@@ -1,3 +1,6 @@
+
+<img width="4192" height="1024" alt="Gemini_Generated_Image_lpmplzlpmplzlpmp(1)(1)" src="https://github.com/user-attachments/assets/0481ca96-4201-4f78-baf0-d5b23e28b43d" />
+
 <p align="center">
   <h1 align="center">ClawSight SIEM</h1>
   <p align="center"><strong>Execution-first security and observability for autonomous AI agents.</strong></p>
