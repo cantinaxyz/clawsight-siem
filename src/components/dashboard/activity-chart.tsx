@@ -31,8 +31,15 @@ export function ActivityChart({ data }: ActivityChartProps) {
         <CardDescription>Telemetry events per hour for the last 24 hours</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-60">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-60 min-w-0 w-full">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            minWidth={280}
+            minHeight={240}
+            debounce={150}
+            initialDimension={{ width: 640, height: 240 }}
+          >
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(228 10% 16%)" />
               <XAxis
