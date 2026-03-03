@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgentSIEM Platform",
-  description: "Operations UI for OpenClaw telemetry, detections, executions, and policy alerts",
+  title: "ClawSight SIEM",
+  description: "Control plane for OpenClaw telemetry, detections, executions, and policy alerts",
 };
 
 export default function RootLayout({

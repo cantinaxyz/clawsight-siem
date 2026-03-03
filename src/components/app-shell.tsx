@@ -45,7 +45,7 @@ export default function AppShell({ children, title, subtitle, activeNav }: AppSh
           <div className="flex items-center gap-2 px-5 py-5">
             <Shield className="h-5 w-5 text-primary" />
             <span className="text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
-              AgentSIEM
+              ClawSight SIEM
             </span>
           </div>
 
