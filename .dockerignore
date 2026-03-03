@@ -1,0 +1,9 @@
+.git
+.github
+.next
+node_modules
+pnpm-store
+npm-debug.log
+yarn-error.log
+tsconfig.tsbuildinfo
+*.log

@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16
+    container_name: clawsight-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clawsight}
+      POSTGRES_USER: ${POSTGRES_USER:-clawsight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clawsight}
+    ports:
+      - "5432:5432"
+    volumes:
+      - clawsight-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clawsight} -d ${POSTGRES_DB:-clawsight}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  siem:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clawsight-siem
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clawsight}:${POSTGRES_PASSWORD:-clawsight}@db:5432/${POSTGRES_DB:-clawsight}?schema=public
+      PORT: 3000
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://127.0.0.1:3000/',(r)=>process.exit(r.statusCode < 500 ? 0 : 1)).on('error',()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  clawsight-data:

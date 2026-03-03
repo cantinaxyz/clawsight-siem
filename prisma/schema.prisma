@@ -1,0 +1,512 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TelemetryEvent {
+  id                 Int      @id @default(autoincrement())
+  eventId            String   @unique
+  ts                 DateTime
+  severity           String   @default("info")
+  category           String
+  action             String
+  projectId          String?
+  agentInstanceId    String?
+  agentName          String?
+  requestId          String?
+  correlationId      String?
+  rootExecutionId    String?
+  rootMessageId      String?
+  traceId            String?
+  spanId             String?
+  parentSpanId       String?
+  result             String?
+  outcome            String?
+  outcomeReason      String?
+  policyRuleId       String?
+  policyDecisionId   String?
+  durationMs         Int?
+  latencyMs          Int?
+  errorClass         String?
+  errorCode          String?
+  toolExitCode       Int?
+  sourceIp           String?
+  sourceHost         String?
+  sourcePort         Int?
+  iocType            String?
+  iocValue           String?
+  riskScore          Int?
+  schemaVersion      Int      @default(2)
+  openclawAgentId    String?
+  openclawSessionKey String?
+  openclawSessionId  String?
+  openclawRunId      String?
+  openclawToolName   String?
+  openclawToolCallId String?
+  openclawGatewayPort Int?
+  payload            Json?
+  payloadRedacted    Json?
+  payloadHash        String?
+  payloadBytes       Int?
+  observables        TelemetryObservable[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([category, ts(sort: Desc)])
+  @@index([projectId, ts(sort: Desc)])
+  @@index([agentInstanceId, ts(sort: Desc)])
+  @@index([agentName, ts(sort: Desc)])
+  @@index([requestId])
+  @@index([rootExecutionId, ts(sort: Desc)])
+  @@index([rootMessageId, ts(sort: Desc)])
+  @@index([traceId, ts(sort: Desc)])
+  @@index([openclawRunId, ts(sort: Desc)])
+  @@index([outcome, ts(sort: Desc)])
+  @@index([policyRuleId, ts(sort: Desc)])
+  @@index([openclawToolName, ts(sort: Desc)])
+}
+
+model Trace {
+  traceId          String   @id
+  sourceType       String   @default("user")
+  status           String   @default("running")
+  startedAt        DateTime
+  endedAt          DateTime?
+  durationMs       Int?
+  lastEventTs      DateTime
+  spanCount        Int      @default(0)
+  eventCount       Int      @default(0)
+  errorCount       Int      @default(0)
+  warnCount        Int      @default(0)
+  blockCount       Int      @default(0)
+  maxRiskScore     Int?
+  firstCategory    String?
+  firstAction      String?
+  projectId        String?
+  agentInstanceId  String?
+  requestId        String?
+  rootExecutionId  String?
+  rootMessageId    String?
+  openclawAgentId  String?
+  openclawSessionKey String?
+  openclawSessionId  String?
+  openclawRunId      String?
+  spans            TraceSpan[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([lastEventTs(sort: Desc)])
+  @@index([sourceType, lastEventTs(sort: Desc)])
+  @@index([status, lastEventTs(sort: Desc)])
+  @@index([openclawSessionKey, lastEventTs(sort: Desc)])
+  @@index([openclawRunId])
+  @@index([requestId])
+  @@index([rootExecutionId, lastEventTs(sort: Desc)])
+  @@index([rootMessageId, lastEventTs(sort: Desc)])
+}
+
+model TraceSpan {
+  id               Int      @id @default(autoincrement())
+  traceId          String
+  spanId           String   @unique
+  parentSpanId     String?
+  eventExternalId  String?
+  ts               DateTime
+  stage            String
+  sourceType       String   @default("user")
+  status           String   @default("info")
+  category         String
+  action           String
+  severity         String   @default("info")
+  outcome          String?
+  outcomeReason    String?
+  durationMs       Int?
+  latencyMs        Int?
+  errorClass       String?
+  errorCode        String?
+  toolName         String?
+  requestId        String?
+  rootExecutionId  String?
+  rootMessageId    String?
+  sessionKey       String?
+  sessionId        String?
+  runId            String?
+  openclawAgentId  String?
+  riskScore        Int?
+  payloadSummary   Json?
+  trace            Trace    @relation(fields: [traceId], references: [traceId], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([traceId, ts(sort: Asc)])
+  @@index([stage, ts(sort: Desc)])
+  @@index([sourceType, ts(sort: Desc)])
+  @@index([status, ts(sort: Desc)])
+  @@index([requestId, ts(sort: Desc)])
+  @@index([rootExecutionId, ts(sort: Desc)])
+  @@index([rootMessageId, ts(sort: Desc)])
+  @@index([runId, ts(sort: Desc)])
+}
+
+model ThreatAlert {
+  id               Int      @id @default(autoincrement())
+  alertKey         String   @unique
+  ts               DateTime
+  ruleId           String
+  ruleName         String
+  ruleSeverity     String
+  ruleCategory     String
+  ruleDescription  String?
+  eventCategory    String?
+  eventAction      String?
+  eventId          String?
+  requestId        String?
+  projectId        String?
+  agentInstanceId  String?
+  openclawAgentId  String?
+  openclawSessionKey String?
+  sourceIp         String?
+  riskScore        Int?
+  status           String   @default("open")
+  alertType        String?
+  triggerType      String?
+  executionId      String?
+  topTool          String?
+  topDomain        String?
+  driftScore       Int?
+  owner            String?
+  ackAt            DateTime?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+  classification   String?
+  eventOutcome     String?
+  alertModel       String   @default("execution_v2")
+  executionCategory String?
+  breachLevel      String?
+  rootExecutionId  String?
+  rollup           Json?
+  dedupeKey        String?  @unique
+  details          Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([ruleId, ts(sort: Desc)])
+  @@index([ruleSeverity, ts(sort: Desc)])
+  @@index([requestId, ts(sort: Desc)])
+  @@index([status, ts(sort: Desc)])
+  @@index([alertType, ts(sort: Desc)])
+  @@index([triggerType, ts(sort: Desc)])
+  @@index([executionId, ts(sort: Desc)])
+  @@index([rootExecutionId, ts(sort: Desc)])
+  @@index([alertModel, status, ts(sort: Desc)])
+  @@index([executionCategory, breachLevel, ts(sort: Desc)])
+  @@index([agentInstanceId, status, ts(sort: Desc)])
+  @@index([eventOutcome, ts(sort: Desc)])
+}
+
+model ExecutionRiskState {
+  id               Int      @id @default(autoincrement())
+  executionId      String
+  rootExecutionId  String?
+  projectId        String?
+  agentInstanceId  String?
+  openclawAgentId  String?
+  triggerType      String?
+  category         String
+  status           String   @default("normal")
+  maxSeverity      String   @default("low")
+  driftScore       Int?
+  blockCount       Int      @default(0)
+  warnCount        Int      @default(0)
+  modifyCount      Int      @default(0)
+  errorCount       Int      @default(0)
+  sanitizationCount Int     @default(0)
+  signalCount      Int      @default(0)
+  firstSignalAt    DateTime
+  lastSignalAt     DateTime
+  lastEventId      String?
+  lastSpanId       String?
+  lastBreachLevel  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([executionId, category])
+  @@index([rootExecutionId, lastSignalAt(sort: Desc)])
+  @@index([agentInstanceId, lastSignalAt(sort: Desc)])
+  @@index([status, lastSignalAt(sort: Desc)])
+  @@index([category, lastSignalAt(sort: Desc)])
+}
+
+model TelemetryObservable {
+  id         Int            @id @default(autoincrement())
+  eventId    Int
+  eventTs    DateTime
+  kind       String
+  value      String
+  valueHash  String
+  confidence Int?
+  event      TelemetryEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([eventId, kind, valueHash])
+  @@index([eventId])
+  @@index([kind, valueHash])
+  @@index([kind, eventTs(sort: Desc)])
+}
+
+model PolicyRule {
+  id              Int      @id @default(autoincrement())
+  name            String
+  scope           String
+  scopeLevel      String   @default("global")
+  managedAgentKey String?
+  action          String
+  priority        Int      @default(100)
+  enabled         Boolean  @default(true)
+  toolName        String?
+  commandContains String?
+  channelId       String?
+  toContains      String?
+  contentContains String?
+  modifyContent   String?
+  modifyParams    Json?
+  reason          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([scope, enabled, priority, id])
+  @@index([scopeLevel, managedAgentKey, enabled, priority, id])
+  @@index([toolName])
+  @@index([channelId])
+}
+
+model ManagedAgent {
+  id             Int      @id @default(autoincrement())
+  agentKey       String   @unique
+  displayName    String?
+  projectId      String?
+  agentInstanceId String?
+  openclawSessionId String?
+  openclawAgentId String?
+  reportedName   String?
+  runtimeMeta    Json?
+  lastBootstrapAt DateTime?
+  sourceType     String   @default("discovered")
+  managed        Boolean  @default(false)
+  policyProfile  String   @default("inherit_global")
+  notes          String?
+  firstSeenAt    DateTime
+  lastSeenAt     DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([projectId, lastSeenAt(sort: Desc)])
+  @@index([managed, lastSeenAt(sort: Desc)])
+  @@index([openclawSessionId, lastSeenAt(sort: Desc)])
+}
+
+model DomainIpResolution {
+  id         Int      @id @default(autoincrement())
+  domain     String
+  domainHash String
+  ip         String
+  ipHash     String
+  source     String   @default("dns")
+  hits       Int      @default(1)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([domainHash, ipHash, source])
+  @@index([domainHash, lastSeenAt(sort: Desc)])
+  @@index([ipHash, lastSeenAt(sort: Desc)])
+  @@index([lastSeenAt(sort: Desc)])
+}
+
+model PromptInjectionConfig {
+  id         Int      @id
+  llmEnabled Boolean  @default(true)
+  model      String   @default("gpt-4.1-mini")
+  timeoutMs  Int      @default(4500)
+  failMode   String   @default("fail_open")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PromptInjectionRule {
+  id             Int      @id @default(autoincrement())
+  name           String
+  enabled        Boolean  @default(true)
+  priority       Int      @default(100)
+  surface        String
+  action         String
+  patternType    String
+  patternValue   String?
+  channelId      String?
+  senderContains String?
+  toolName       String?
+  llmCheck       Boolean  @default(false)
+  reason         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  decisions      PromptInjectionDecision[]
+
+  @@index([enabled, surface, priority, id])
+  @@index([patternType])
+  @@index([channelId])
+  @@index([toolName])
+}
+
+model PromptInjectionDecision {
+  id              Int      @id @default(autoincrement())
+  ruleId          Int?
+  requestId       String?
+  eventId         String?
+  sessionKey      String?
+  toolName        String?
+  channelId       String?
+  sender          String?
+  surface         String
+  action          String
+  enforcement     String
+  reason          String?
+  signals         Json?
+  inputHash       String?
+  modelVerdict    String?
+  modelConfidence Int?
+  modelReason     String?
+  latencyMs       Int?
+  modelError      String?
+  createdAt       DateTime @default(now())
+  rule            PromptInjectionRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([surface, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([requestId, createdAt(sort: Desc)])
+  @@index([ruleId, createdAt(sort: Desc)])
+}
+
+model IntentPolicyConfig {
+  id                  Int      @id @default(autoincrement())
+  configKey           String   @unique
+  scopeLevel          String   @default("global")
+  managedAgentKey     String?
+  mode                String   @default("audit")
+  llmEnabled          Boolean  @default(true)
+  baselineModel       String   @default("gpt-4.1-mini")
+  alignmentModel      String   @default("gpt-4.1-mini")
+  outputModel         String   @default("gpt-4.1-mini")
+  outputSanitization  Boolean  @default(true)
+  driftWarnThreshold  Int      @default(35)
+  driftBlockThreshold Int      @default(70)
+  ambiguousLowerBound Int      @default(30)
+  ambiguousUpperBound Int      @default(60)
+  signalWeights       Json?
+  domainClasses       Json?
+  normalizationRules  Json?
+  toolScopeMappings   Json?
+  taskDefaults        Json?
+  alignmentReliefEnabled  Boolean @default(true)
+  alignmentReliefThreshold Int     @default(85)
+  failMode            String   @default("fail_open")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([scopeLevel, managedAgentKey, updatedAt(sort: Desc)])
+}
+
+model ExecutionIntent {
+  id               Int      @id @default(autoincrement())
+  executionKey     String   @unique
+  rootExecutionId  String
+  agentInstanceId  String?
+  agentName        String?
+  managedAgentKey  String?
+  projectId        String?
+  sessionKey       String?
+  runId            String?
+  sourceType       String?
+  userPrompt       String?
+  taskBoundary     String?
+  expectedScopes   Json?
+  expectedDomains  Json?
+  sensitiveContext Boolean  @default(false)
+  confidence       Int?
+  extractionMethod String   @default("heuristic")
+  status           String   @default("active")
+  driftScore       Int      @default(0)
+  baselinePatched  Boolean  @default(false)
+  baselineVersion  Int      @default(1)
+  baselinePatchedAt DateTime?
+  baselinePatchedBy String?
+  baselinePatchReason String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  decisions        IntentDecision[]
+
+  @@index([rootExecutionId, createdAt(sort: Desc)])
+  @@index([agentInstanceId, createdAt(sort: Desc)])
+  @@index([managedAgentKey, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model IntentDecision {
+  id              Int              @id @default(autoincrement())
+  executionKey    String?
+  rootExecutionId String
+  agentInstanceId String?
+  requestId       String?
+  traceId         String?
+  spanId          String?
+  phase           String
+  toolName        String?
+  targetDomain    String?
+  action          String
+  scoreDelta      Int              @default(0)
+  driftScore      Int              @default(0)
+  confidence      Int?
+  reason          String?
+  signals         Json?
+  details         Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  execution       ExecutionIntent? @relation(fields: [executionKey], references: [executionKey], onDelete: SetNull)
+
+  @@index([rootExecutionId, createdAt(sort: Desc)])
+  @@index([executionKey, createdAt(sort: Desc)])
+  @@index([agentInstanceId, createdAt(sort: Desc)])
+  @@index([phase, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([requestId, createdAt(sort: Desc)])
+}
+
+model TraceOrphan {
+  id                Int      @id @default(autoincrement())
+  eventExternalId   String?
+  eventTs           DateTime?
+  eventCategory     String?
+  eventAction       String?
+  reason            String
+  traceHint         String?
+  requestId         String?
+  rootExecutionId   String?
+  rootMessageId     String?
+  openclawSessionKey String?
+  payload           Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([createdAt(sort: Desc)])
+  @@index([reason, createdAt(sort: Desc)])
+  @@index([requestId, createdAt(sort: Desc)])
+  @@index([rootExecutionId, createdAt(sort: Desc)])
+  @@index([rootMessageId, createdAt(sort: Desc)])
+  @@index([openclawSessionKey, createdAt(sort: Desc)])
+}
