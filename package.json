@@ -41,5 +41,13 @@
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "hono@4.11.4": "4.12.4",
+      "lodash@4.17.21": "4.17.23",
+      "minimatch@3.1.2": "3.1.5",
+      "minimatch@9.0.5": "9.0.9"
+    }
   }
 }
