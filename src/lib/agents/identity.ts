@@ -22,8 +22,17 @@ function clean(value: string | null | undefined): string {
   return String(value || "").trim();
 }
 
+function sanitizeProjectId(value: string): string {
+  return value
+    .replace(/\s+/g, "-")
+    .replace(/:/g, "-")
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "");
+}
+
 function projectSegment(projectId?: string | null): string {
-  const normalized = clean(projectId);
+  const normalized = sanitizeProjectId(clean(projectId));
   return normalized || "default";
 }
 
@@ -77,7 +86,7 @@ export function parseManagedAgentKey(agentKey?: string | null): ManagedAgentKeyP
     return null;
   }
 
-  const projectId = clean(raw.slice(first + 1, second)) || "default";
+  const projectId = projectSegment(raw.slice(first + 1, second));
   const value = clean(raw.slice(second + 1));
   if (!value) return null;
 

@@ -324,10 +324,12 @@ function buildDeletionIdentityScope(input: {
   openclawSessionKeys: string[];
 } {
   const parsed = parseManagedAgentKey(input.agentKey);
-  const fallbackProjectId = String(input.managedAgentProjectId || "").trim() || "default";
+  const fallbackProjectId = parsed?.projectId || "default";
+  const rowProjectId = String(input.managedAgentProjectId || "").trim();
+  const projectId = rowProjectId || fallbackProjectId;
   if (!parsed) {
     return {
-      projectId: fallbackProjectId,
+      projectId,
       agentInstanceIds: [],
       openclawAgentIds: [],
       openclawSessionIds: [],
@@ -336,7 +338,7 @@ function buildDeletionIdentityScope(input: {
   }
 
   return {
-    projectId: parsed.projectId || fallbackProjectId,
+    projectId,
     agentInstanceIds: parsed.kind === "inst" ? [parsed.value] : [],
     openclawAgentIds: parsed.kind === "oc" ? [parsed.value] : [],
     openclawSessionIds: parsed.kind === "sid" ? [parsed.value] : [],
