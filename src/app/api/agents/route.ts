@@ -2,12 +2,15 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/agents/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, resolveProjectScope } from "@/lib/auth";
 import { discoverManagedAgents } from "@/lib/agents/discovery";
 import { listManagedAgents } from "@/lib/agents/repository";
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
     const scope = resolveProjectScope(request, requestedProjectId);

@@ -3,6 +3,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
+  authorizeAdminRequest,
+  authorizeReadRequest,
+  resolveProjectScope,
+} from "@/lib/auth";
+import { parseManagedAgentKey } from "@/lib/agents/identity";
+import {
   deleteManagedAgentAndData,
   getManagedAgent,
   updateManagedAgent,
@@ -18,12 +24,18 @@ async function resolveParams(params: Promise<Params> | Params): Promise<Params> 
  * Returns managed-agent profile by key.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<Params> | Params },
 ) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { agentKey } = await resolveParams(context.params);
     const decoded = decodeURIComponent(agentKey);
+    const parsed = parseManagedAgentKey(decoded);
+    const scope = resolveProjectScope(request, parsed?.projectId);
+    if (scope.response) return scope.response;
     const item = await getManagedAgent(decoded);
     if (!item) {
       return NextResponse.json({ error: "agent not found" }, { status: 404 });
@@ -42,6 +54,9 @@ export async function PATCH(
   context: { params: Promise<Params> | Params },
 ) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { agentKey } = await resolveParams(context.params);
     const decoded = decodeURIComponent(agentKey);
     const body = (await request.json()) as {
@@ -67,10 +82,13 @@ export async function PATCH(
  * Hard-deletes a managed agent and all scoped persisted data.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<Params> | Params },
 ) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { agentKey } = await resolveParams(context.params);
     const decoded = decodeURIComponent(agentKey);
     await deleteManagedAgentAndData(decoded);

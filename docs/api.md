@@ -85,15 +85,15 @@ Plugin / Client
 ## Agents
 
 - `GET /api/agents`  
-  Lists managed agents with filters and summary metadata. Auth: project-scoped read when tenant tokens are enabled.
+  Lists managed agents with filters and summary metadata. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/agents/:agentKey`  
-  Returns one managed agent profile.
+  Returns one managed agent profile. Auth: required read token (project scope enforced in tenant-token mode).
 - `PATCH /api/agents/:agentKey`  
-  Updates mutable agent fields (for example display/profile metadata).
+  Updates mutable agent fields (for example display/profile metadata). Auth: admin token.
 - `DELETE /api/agents/:agentKey`  
-  Deletes a managed agent record and related references using key-authoritative identity scope; alert/risk cleanup is project-scoped and orphan cleanup is restricted to key-bound session scope.
+  Deletes a managed agent record and related references using key-authoritative identity scope; alert/risk cleanup is project-scoped and orphan cleanup is restricted to key-bound session scope. Auth: admin token.
 - `POST /api/agents/:agentKey/profile`  
-  Saves agent profile data and scoped policy fields via API form payload.
+  Saves agent profile data and scoped policy fields via API form payload. Auth: admin token.
 
 ## Safety and Intent Configuration
 
