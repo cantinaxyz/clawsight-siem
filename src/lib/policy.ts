@@ -16,6 +16,7 @@ const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b/gi
 const IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g;
 const IPV6_RE = /\b(?:[a-f0-9]{1,4}:){2,7}[a-f0-9]{1,4}\b/gi;
 const TOKEN_RE = /[^\s"'<>]+/g;
+const EXEC_WRAPPERS = new Set(["sudo", "env", "command", "time", "nohup"]);
 
 export type ToolDecisionResult = {
   action: DecisionAction;
@@ -116,6 +117,126 @@ function includesNormalized(haystack: string, needle: string | null): boolean {
   const normalizedNeedle = needle.trim().toLowerCase();
   if (!normalizedNeedle) return true;
   return haystack.includes(normalizedNeedle);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function splitCommandTokens(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      if (quote === '"' && ch === "\\" && i + 1 < command.length) {
+        current += command[i + 1];
+        i += 1;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    if (ch === "\\" && i + 1 < command.length) {
+      current += command[i + 1];
+      i += 1;
+      continue;
+    }
+    current += ch;
+  }
+
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function normalizeExecutableToken(token: string): string {
+  const raw = token.trim().toLowerCase().replace(/^['"]+|['"]+$/g, "");
+  if (!raw) return "";
+  const leaf = raw.split(/[\\/]/).filter(Boolean).at(-1) || raw;
+  return leaf.endsWith(".exe") ? leaf.slice(0, -4) : leaf;
+}
+
+function extractExecExecutable(command: string): string | null {
+  const tokens = splitCommandTokens(command);
+  if (tokens.length === 0) return null;
+  let index = 0;
+  while (index < tokens.length) {
+    const token = String(tokens[index] || "");
+    if (/^[a-z_][a-z0-9_]*=.*/i.test(token)) {
+      index += 1;
+      continue;
+    }
+
+    const normalized = normalizeExecutableToken(token);
+    if (!normalized) {
+      index += 1;
+      continue;
+    }
+    if (!EXEC_WRAPPERS.has(normalized)) {
+      return normalized;
+    }
+
+    index += 1;
+    if (normalized === "sudo" || normalized === "command" || normalized === "time") {
+      while (index < tokens.length && String(tokens[index] || "").startsWith("-")) {
+        index += 1;
+      }
+    }
+    if (normalized === "env") {
+      while (index < tokens.length && /^[a-z_][a-z0-9_]*=.*/i.test(String(tokens[index] || ""))) {
+        index += 1;
+      }
+    }
+  }
+  return null;
+}
+
+function matchesStandaloneCommandToken(command: string, needle: string): boolean {
+  const escaped = escapeRegExp(needle);
+  return new RegExp(`(^|[^a-z0-9_./-])${escaped}(?=$|[^a-z0-9_./-])`, "i").test(command);
+}
+
+function matchesExecAllowCommand(command: string, needle: string): boolean {
+  if (!needle) return false;
+  if (needle.includes(" ")) {
+    return normalize(command).startsWith(needle);
+  }
+  const executable = extractExecExecutable(command);
+  const normalizedNeedle = normalizeExecutableToken(needle);
+  return Boolean(executable && normalizedNeedle && executable === normalizedNeedle);
+}
+
+function matchesExecBlockCommand(command: string, needle: string): boolean {
+  if (!needle) return false;
+  const normalizedCommand = normalize(command);
+  if (needle.includes(" ")) {
+    return normalizedCommand.includes(needle);
+  }
+  const normalizedNeedle = normalizeExecutableToken(needle);
+  if (!normalizedNeedle) return false;
+  const executable = extractExecExecutable(command);
+  if (executable && (executable === normalizedNeedle || executable.startsWith(`${normalizedNeedle}-`))) {
+    return true;
+  }
+  return matchesStandaloneCommandToken(normalizedCommand, normalizedNeedle);
 }
 
 function normalizeDomain(value: string): string {
@@ -293,8 +414,20 @@ function matchesToolRule(rule: PolicyRule, req: Record<string, unknown>): boolea
   if (rule.toolName && normalize(rule.toolName) !== toolName) {
     return false;
   }
-  if (rule.commandContains && !includesNormalized(command, rule.commandContains)) {
-    return false;
+  if (rule.commandContains) {
+    if (toolName === "exec") {
+      const normalizedNeedle = normalize(rule.commandContains);
+      if (!normalizedNeedle) return false;
+      if (rule.action === "allow") {
+        if (!matchesExecAllowCommand(command, normalizedNeedle)) return false;
+      } else if (rule.action === "block") {
+        if (!matchesExecBlockCommand(command, normalizedNeedle)) return false;
+      } else if (!includesNormalized(command, rule.commandContains)) {
+        return false;
+      }
+    } else if (!includesNormalized(command, rule.commandContains)) {
+      return false;
+    }
   }
   return true;
 }
@@ -573,6 +706,7 @@ export async function evaluateToolDecision(req: Record<string, unknown>): Promis
   const managedAgentKey = getRequestManagedAgentKey(req);
   const rules = await getScopedRules(["domain", "ip", "tool"], managedAgentKey);
   const targets = extractRequestTargets(req);
+  const toolName = getToolName(req);
   for (const rule of rules) {
     if (rule.scope === "domain" && matchesDomainRule(rule, targets.domains)) {
       return applyDomainToolRule(rule);
@@ -580,7 +714,16 @@ export async function evaluateToolDecision(req: Record<string, unknown>): Promis
     if (rule.scope === "ip" && matchesIpRule(rule, targets.ips)) {
       return applyIpToolRule(rule);
     }
-    if (matchesToolRule(rule, req)) {
+  }
+  if (toolName === "exec") {
+    for (const rule of rules) {
+      if (rule.scope === "tool" && rule.action === "block" && matchesToolRule(rule, req)) {
+        return applyToolRule(rule, req);
+      }
+    }
+  }
+  for (const rule of rules) {
+    if (rule.scope === "tool" && matchesToolRule(rule, req)) {
       return applyToolRule(rule, req);
     }
   }

@@ -58,6 +58,7 @@ Deterministic controls are explicit and predictable:
 - tool allow/deny controls
 - internet/domain/IP policies (allow/deny/warn behavior)
 - prompt-injection `tool_call` hard enforcement in the production guardrail decision path
+- for `exec` command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
 
 These controls provide hard boundaries independent of LLM interpretation.
 
