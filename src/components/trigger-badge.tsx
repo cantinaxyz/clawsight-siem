@@ -69,7 +69,7 @@ const outcomeConfig: Record<
     className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   },
   running: {
-    label: "Run",
+    label: "Running",
     icon: Clock,
     className: "border-blue-500/30 bg-blue-500/10 text-blue-300",
   },

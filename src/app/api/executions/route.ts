@@ -74,6 +74,18 @@ export async function GET(request: NextRequest) {
     const outcome = mapExecutionOutcome(url.searchParams.get("outcome"));
 
     const conditions: Prisma.Sql[] = [];
+    conditions.push(
+      Prisma.sql`NOT (
+        "traceId" LIKE 'agent:%:bootstrap'
+        OR "traceId" LIKE 'session:%'
+        OR (
+          "traceId" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND COALESCE("rootExecutionId", '') = ''
+          AND COALESCE("openclawRunId", '') = ''
+          AND "endedAt" IS NULL
+        )
+      )`,
+    );
     if (search) {
       const needle = `%${search}%`;
       conditions.push(
