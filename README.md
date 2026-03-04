@@ -144,6 +144,7 @@ echo 'SIEM_PROJECT_TOKENS=default:tenant-default-token,project-a:tenant-a-token'
 Notes:
 - `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
 - `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
+- `SIEM_ADMIN_TOKEN`: also required for control-plane server actions in the policy editor (`/policies`, `/policies/:id`) that create/update/delete global rules.
 - Authenticated read APIs (including telemetry, traces, executions, agents, and alerts) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
 - `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
