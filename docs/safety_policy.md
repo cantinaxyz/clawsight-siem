@@ -57,6 +57,8 @@ Deterministic controls are explicit and predictable:
 - command blocking (for example shell patterns and disallowed commands)
 - tool allow/deny controls
 - internet/domain/IP policies (allow/deny/warn behavior)
+- safety action toggles are enforced by generated rules: run-command default mode, download/install controls, and secret-access controls
+- `allowHttpsOnly` is enforced as a static block on insecure `http://` targets across network-capable tools
 - domain/IP enforcement resolves mixed matches with strict precedence (`block > warn > allow`) to prevent allowlist-token bypasses from overriding blocked destinations
 - domain extraction normalizes IDNs to punycode (IDNA) so Unicode hostnames in scheme-less command strings still participate in domain policy enforcement
 - prompt-injection `tool_call` hard enforcement in the production guardrail decision path

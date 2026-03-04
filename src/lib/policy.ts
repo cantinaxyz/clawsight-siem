@@ -19,6 +19,7 @@ const IPV6_RE = /\b(?:[a-f0-9]{1,4}:){2,7}[a-f0-9]{1,4}\b/gi;
 const TOKEN_RE = /[^\s"'<>]+/g;
 const EXEC_WRAPPERS = new Set(["sudo", "env", "command", "time", "nohup"]);
 const EXECUTION_TOOL_ALIASES = new Set(["exec", "bash", "gateway"]);
+const RUN_COMMANDS_DEFAULT_RULE_PREFIX = "safety:actions:run_commands:default:";
 
 export type ToolDecisionResult = {
   action: DecisionAction;
@@ -628,6 +629,15 @@ function evaluateDomainIpToolDecision(
   return bestScope === "domain" ? applyDomainToolRule(bestRule) : applyIpToolRule(bestRule);
 }
 
+function isRunCommandsDefaultRule(rule: PolicyRule): boolean {
+  return (
+    rule.scope === "tool" &&
+    normalize(rule.toolName) === "exec" &&
+    !rule.commandContains &&
+    String(rule.name || "").startsWith(RUN_COMMANDS_DEFAULT_RULE_PREFIX)
+  );
+}
+
 /**
  * Resolves domain/ip message outcomes using strictest-match semantics.
  *
@@ -870,21 +880,52 @@ export async function evaluateToolDecision(req: Record<string, unknown>): Promis
   const targets = extractRequestTargets(req);
   const toolName = getToolName(req);
   const targetDecision = evaluateDomainIpToolDecision(rules, targets);
-  if (targetDecision) {
+  if (targetDecision?.action === "block") {
     return targetDecision;
   }
-  if (toolName === "exec") {
+  const isExecutionTool = EXECUTION_TOOL_ALIASES.has(toolName);
+  const runCommandsFallback =
+    isExecutionTool
+      ? rules.find((rule) => isRunCommandsDefaultRule(rule)) || null
+      : null;
+  let toolDecision: ToolDecisionResult | null = null;
+  if (isExecutionTool) {
     for (const rule of rules) {
-      if (rule.scope === "tool" && rule.action === "block" && matchesToolRule(rule, req)) {
-        return applyToolRule(rule, req);
+      if (
+        rule.scope === "tool" &&
+        rule.action === "block" &&
+        !isRunCommandsDefaultRule(rule) &&
+        matchesToolRule(rule, req)
+      ) {
+        toolDecision = applyToolRule(rule, req);
+        break;
       }
     }
   }
-  for (const rule of rules) {
-    if (rule.scope === "tool" && matchesToolRule(rule, req)) {
-      return applyToolRule(rule, req);
+  if (!toolDecision) {
+    for (const rule of rules) {
+      if (
+        rule.scope === "tool" &&
+        !isRunCommandsDefaultRule(rule) &&
+        matchesToolRule(rule, req)
+      ) {
+        toolDecision = applyToolRule(rule, req);
+        break;
+      }
     }
   }
+  if (!toolDecision && runCommandsFallback) {
+    toolDecision = applyToolRule(runCommandsFallback, req);
+  }
+
+  if (targetDecision?.action === "warn") {
+    if (toolDecision?.action === "block") {
+      return toolDecision;
+    }
+    return targetDecision;
+  }
+  if (toolDecision) return toolDecision;
+  if (targetDecision) return targetDecision;
   return { action: "allow" };
 }
 

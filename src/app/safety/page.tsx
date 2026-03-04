@@ -237,7 +237,11 @@ export default async function SafetyPage({
               <div className="px-4 py-3">
                 <h3 className="text-sm font-medium text-foreground">Run commands</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  List-based control. Unmatched commands are allowed by default.
+                  {cfg.actions.runCommands === "block"
+                    ? "List-based control. Unmatched commands are blocked by default."
+                    : cfg.actions.runCommands === "warn"
+                      ? "List-based control. Unmatched commands are warned by default."
+                      : "List-based control. Unmatched commands are allowed by default."}
                 </p>
               </div>
               <div className="border-t border-border p-4">
