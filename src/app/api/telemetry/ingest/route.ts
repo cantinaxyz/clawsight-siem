@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === "object" && !Array.isArray(e))
       .map((e) => ({
         eventId: typeof e.eventId === "string" ? e.eventId : undefined,
-        ts: typeof e.ts === "number" ? e.ts : Date.now(),
+        ts: typeof e.ts === "number" && Number.isFinite(e.ts) ? e.ts : Date.now(),
         category: typeof e.category === "string" ? e.category : "diagnostic",
         action: typeof e.action === "string" ? e.action : "event",
         severity: typeof e.severity === "string" ? e.severity : "info",

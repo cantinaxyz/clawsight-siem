@@ -154,6 +154,7 @@ Notes:
 - Execution risk aggregation and execution-v2 incident dedupe are namespaced by project scope to prevent cross-project collision/contamination in shared-database deployments.
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
 - `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
+- Client telemetry timestamps are bounded at ingest to reduce forged timeline skew (`SIEM_EVENT_TS_MAX_PAST_SKEW_MS`, default 24h; `SIEM_EVENT_TS_MAX_FUTURE_SKEW_MS`, default 5m).
 - Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
 
 For intent-policy LLM extraction/alignment checks (and optional inbound prompt-injection classification):

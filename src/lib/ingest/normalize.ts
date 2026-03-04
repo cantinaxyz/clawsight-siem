@@ -59,6 +59,26 @@ export type NormalizedTelemetryEnvelope = {
 };
 
 type PayloadMap = Record<string, unknown> | null;
+const DEFAULT_MAX_PAST_TS_SKEW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_FUTURE_TS_SKEW_MS = 5 * 60 * 1000;
+const MAX_TS_SKEW_MS_CAP = 30 * 24 * 60 * 60 * 1000;
+
+function parseSkewMs(raw: string | undefined, fallback: number): number {
+  if (!raw?.trim()) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.min(MAX_TS_SKEW_MS_CAP, Math.floor(parsed));
+}
+
+const MAX_EVENT_TS_PAST_SKEW_MS = parseSkewMs(
+  process.env.SIEM_EVENT_TS_MAX_PAST_SKEW_MS || process.env.CLAWSIGHT_EVENT_TS_MAX_PAST_SKEW_MS,
+  DEFAULT_MAX_PAST_TS_SKEW_MS,
+);
+
+const MAX_EVENT_TS_FUTURE_SKEW_MS = parseSkewMs(
+  process.env.SIEM_EVENT_TS_MAX_FUTURE_SKEW_MS || process.env.CLAWSIGHT_EVENT_TS_MAX_FUTURE_SKEW_MS,
+  DEFAULT_MAX_FUTURE_TS_SKEW_MS,
+);
 
 function toInt(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
@@ -73,7 +93,13 @@ function asPayloadRecord(payload: unknown): PayloadMap {
 }
 
 function normalizeTimestamp(ts: number): Date {
-  const parsed = new Date(ts);
+  const nowMs = Date.now();
+  if (!Number.isFinite(ts)) return new Date(nowMs);
+  const candidate = Math.trunc(ts);
+  const minAllowed = nowMs - MAX_EVENT_TS_PAST_SKEW_MS;
+  const maxAllowed = nowMs + MAX_EVENT_TS_FUTURE_SKEW_MS;
+  const bounded = Math.max(minAllowed, Math.min(maxAllowed, candidate));
+  const parsed = new Date(bounded);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
