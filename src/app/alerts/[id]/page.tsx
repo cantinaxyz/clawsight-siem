@@ -14,6 +14,7 @@ import {
   type AlertStatus,
 } from "@/lib/alerts/lifecycle";
 import { prisma } from "@/lib/prisma";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,6 +123,7 @@ function alertTypeClass(value: string): string {
 
 async function transitionAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
 
   const idValue = formData.get("id");
   const nextValue = formData.get("nextStatus");
@@ -174,6 +176,7 @@ async function transitionAction(formData: FormData) {
 
 async function resolveAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
 
   const idValue = formData.get("id");
   const returnToValue = formData.get("returnTo");

@@ -145,7 +145,7 @@ Notes:
 - `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
 - `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
 - `SIEM_ADMIN_TOKEN`: also required for control-plane server actions in the policy editor (`/policies`, `/policies/:id`) that create/update/delete global rules.
-- `SIEM_ADMIN_TOKEN`: also required for alert-triage server actions on `/alerts` (ack, unack, resolve, false-positive classification updates).
+- `SIEM_ADMIN_TOKEN`: also required for alert-triage server actions on `/alerts` and `/alerts/:id` (ack, unack, resolve, false-positive classification updates).
 - `SIEM_ADMIN_TOKEN`: also required for safety-page server actions on `/safety` (actions/internet configuration updates).
 - `SIEM_ADMIN_TOKEN`: also required for agent-detail server actions on `/agents/:agentKey` (profile edits, scoped-rule create/delete, and hard delete).
 - Authenticated read APIs (including telemetry, traces, executions, agents, and alerts) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
