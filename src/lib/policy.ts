@@ -15,6 +15,7 @@ const URL_RE = /https?:\/\/[^\s"'<>]+/gi;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b/gi;
 const IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g;
 const IPV6_RE = /\b(?:[a-f0-9]{1,4}:){2,7}[a-f0-9]{1,4}\b/gi;
+const TOKEN_RE = /[^\s"'<>]+/g;
 
 export type ToolDecisionResult = {
   action: DecisionAction;
@@ -122,7 +123,53 @@ function normalizeDomain(value: string): string {
 }
 
 function normalizeIp(value: string): string {
-  return value.trim().replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  let candidate = value.trim().toLowerCase();
+  if (!candidate) return "";
+
+  candidate = candidate
+    .replace(/^[`"'({<]+/, "")
+    .replace(/[)`"'}>,;.!?]+$/, "");
+
+  if (candidate.includes("://")) {
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.hostname) {
+        candidate = parsed.hostname.toLowerCase();
+      }
+    } catch {
+      // keep original candidate
+    }
+  }
+
+  if (candidate.startsWith("[")) {
+    const end = candidate.indexOf("]");
+    if (end > 0) {
+      candidate = candidate.slice(1, end);
+    }
+  } else if (candidate.endsWith("]")) {
+    candidate = candidate.slice(0, -1);
+  }
+
+  const slashIdx = candidate.indexOf("/");
+  if (slashIdx > 0) candidate = candidate.slice(0, slashIdx);
+  const queryIdx = candidate.indexOf("?");
+  if (queryIdx > 0) candidate = candidate.slice(0, queryIdx);
+  const hashIdx = candidate.indexOf("#");
+  if (hashIdx > 0) candidate = candidate.slice(0, hashIdx);
+
+  candidate = candidate.replace(/%[0-9a-z_.-]+$/i, "");
+  candidate = candidate.replace(/^ipv6:/i, "");
+
+  if (isIP(candidate) !== 0) return candidate;
+
+  if (candidate.includes(":") && candidate.indexOf(":") === candidate.lastIndexOf(":")) {
+    const [hostPart, portPart] = candidate.split(":");
+    if (hostPart && portPart && /^\d+$/.test(portPart) && isIP(hostPart) !== 0) {
+      return hostPart;
+    }
+  }
+
+  return "";
 }
 
 function addIpCandidate(value: string, store: Set<string>) {
@@ -156,6 +203,9 @@ function collectTargetsFromString(input: string, domainStore: Set<string>, ipSto
   }
   for (const ip of input.match(IPV6_RE) ?? []) {
     addIpCandidate(ip, ipStore);
+  }
+  for (const token of input.match(TOKEN_RE) ?? []) {
+    addIpCandidate(token, ipStore);
   }
 }
 
