@@ -58,6 +58,15 @@ export async function GET(
     if (unauthorized) return unauthorized;
 
     const url = new URL(request.url);
+    const includeSensitive =
+      url.searchParams.get("includeSensitive") === "1" ||
+      url.searchParams.get("includeSensitive") === "true";
+    const unauthorizedAdmin = authorizeAdminRequest(request);
+    const isAdmin = !unauthorizedAdmin;
+    if (includeSensitive && unauthorizedAdmin) {
+      return unauthorizedAdmin;
+    }
+    const canReadSensitive = includeSensitive || isAdmin;
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
     const scope = resolveProjectScope(request, requestedProjectId);
     if (scope.response) return scope.response;
@@ -103,11 +112,39 @@ export async function GET(
       LIMIT 400
     `);
 
+    const executionPayload = canReadSensitive
+      ? execution
+      : {
+          executionKey: execution.executionKey,
+          rootExecutionId: execution.rootExecutionId,
+          agentInstanceId: execution.agentInstanceId,
+          managedAgentKey: execution.managedAgentKey,
+          driftScore: execution.driftScore,
+          status: execution.status,
+          extractionMethod: execution.extractionMethod,
+          confidence: execution.confidence,
+          baselinePatched: execution.baselinePatched,
+          baselineVersion: execution.baselineVersion,
+          baselinePatchedAt: execution.baselinePatchedAt,
+          baselinePatchedBy: execution.baselinePatchedBy,
+          baselinePatchReason: execution.baselinePatchReason,
+        };
+
     return NextResponse.json({
       ok: true,
-      execution,
+      execution: executionPayload,
       decisions: decisions.map((row) => ({
-        ...row,
+        id: row.id,
+        phase: row.phase,
+        action: row.action,
+        scoreDelta: row.scoreDelta,
+        driftScore: row.driftScore,
+        confidence: row.confidence,
+        reason: row.reason,
+        toolName: row.toolName,
+        targetDomain: row.targetDomain,
+        signals: canReadSensitive ? row.signals : null,
+        details: canReadSensitive ? row.details : null,
         createdAt: row.createdAt.toISOString(),
       })),
     });

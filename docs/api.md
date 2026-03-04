@@ -119,6 +119,6 @@ Plugin / Client
 - `POST /api/intent/config`  
   Saves intent configuration payload. Auth: admin token.
 - `GET /api/intent/executions/by-root/:rootExecutionId`  
-  Returns intent baseline and decisions for a root execution id. Auth: required read token (project scope enforced in tenant-token mode).
+  Returns intent baseline and decisions for a root execution id. By default, sensitive baseline fields and decision payload blobs (`signals`, `details`) are redacted for non-admin callers. Set `includeSensitive=1` for full payloads; this requires admin token. Auth: required read token (project scope enforced in tenant-token mode).
 - `PATCH /api/intent/executions/by-root/:rootExecutionId`  
   Applies intent baseline patch/update operations for that execution. Auth: admin token.
