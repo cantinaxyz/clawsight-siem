@@ -53,6 +53,7 @@ intent_baseline (once per execution)
 ### 3) Drift Score and Modes
 
 - Drift accumulates per execution.
+- Execution intent state is namespaced by project + agent + root execution id to avoid cross-project baseline collisions.
 - Thresholds define warning and blocking transitions.
 - Mode behavior:
   - `off`: no drift checks.

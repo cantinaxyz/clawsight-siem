@@ -606,10 +606,15 @@ function requestManagedAgentKey(req: Record<string, unknown>): string | null {
   });
 }
 
-function executionKey(rootExecutionId: string, agentInstanceId?: string | null): string {
+function executionKey(
+  rootExecutionId: string,
+  projectId?: string | null,
+  agentInstanceId?: string | null,
+): string {
   const root = rootExecutionId.trim();
+  const project = normalizeProjectId(projectId);
   const agent = String(agentInstanceId || "unknown").trim();
-  return `${agent}:${root}`;
+  return `${project}:${agent}:${root}`;
 }
 
 function normalizeProjectId(value: unknown): string {
@@ -1492,7 +1497,7 @@ export async function evaluateIntentBaseline(
     };
   }
 
-  const eKey = executionKey(rootExecutionId, input.agentInstanceId);
+  const eKey = executionKey(rootExecutionId, input.projectId, input.agentInstanceId);
   const existing = await loadExecution(eKey);
   const hasIdentityConflict = existing
     ? hasExecutionIdentityConflict(existing, {
@@ -1611,7 +1616,7 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
     };
   }
 
-  const eKey = executionKey(rootExecutionId, input.agentInstanceId);
+  const eKey = executionKey(rootExecutionId, input.projectId, input.agentInstanceId);
   const execution = await loadExecution(eKey);
   const hasIdentityConflict = execution
     ? hasExecutionIdentityConflict(execution, {
@@ -1870,7 +1875,7 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
     };
   }
 
-  const eKey = executionKey(rootExecutionId, input.agentInstanceId);
+  const eKey = executionKey(rootExecutionId, input.projectId, input.agentInstanceId);
   const loadedExecution = await loadExecution(eKey);
   const hasIdentityConflict = loadedExecution
     ? hasExecutionIdentityConflict(loadedExecution, {
