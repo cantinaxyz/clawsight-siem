@@ -211,6 +211,20 @@ function projectScopeSql(projectColumn: Prisma.Sql, projectId: string): Prisma.S
 }
 
 /**
+ * Builds Prisma project scoping for ExecutionIntent rows.
+ *
+ * ExecutionIntent treats `null`/empty project ids as `default` for backward compatibility.
+ */
+function executionIntentProjectWhere(projectId: string): Prisma.ExecutionIntentWhereInput {
+  if (projectId === "default") {
+    return {
+      OR: [{ projectId: null }, { projectId: "" }, { projectId: "default" }],
+    };
+  }
+  return { projectId };
+}
+
+/**
  * Builds a SQL predicate for matching agent-scoped identities across heterogeneous tables.
  *
  * The resulting predicate is used for hard-delete cleanup where each table can expose a
@@ -339,19 +353,29 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
     const traceIds = nonEmpty(traceRows.map((row) => row.traceId));
     const rootExecutionIds = nonEmpty(traceRows.map((row) => row.rootExecutionId));
 
+    const executionIntentIdentityClauses: Prisma.ExecutionIntentWhereInput[] = [
+      { managedAgentKey: normalizedKey },
+      identity.agentInstanceIds.length > 0
+        ? { agentInstanceId: { in: identity.agentInstanceIds } }
+        : undefined,
+      identity.openclawSessionKeys.length > 0
+        ? { sessionKey: { in: identity.openclawSessionKeys } }
+        : undefined,
+    ].filter(Boolean) as Prisma.ExecutionIntentWhereInput[];
+
     const executionIntentWhere: Prisma.ExecutionIntentWhereInput = {
-      OR: [
-        { managedAgentKey: normalizedKey },
-        identity.agentInstanceIds.length > 0 ? { agentInstanceId: { in: identity.agentInstanceIds } } : undefined,
-        rootExecutionIds.length > 0 ? { rootExecutionId: { in: rootExecutionIds } } : undefined,
-      ].filter(Boolean) as Prisma.ExecutionIntentWhereInput[],
+      AND: [
+        executionIntentProjectWhere(identity.projectId),
+        { OR: executionIntentIdentityClauses },
+      ],
     };
 
     const executionIntents = await tx.executionIntent.findMany({
       where: executionIntentWhere,
-      select: { executionKey: true, rootExecutionId: true },
+      select: { id: true, executionKey: true, rootExecutionId: true },
     });
 
+    const executionIntentIds = executionIntents.map((row) => row.id);
     const executionKeys = nonEmpty(executionIntents.map((row) => row.executionKey));
     for (const value of executionIntents.map((row) => row.rootExecutionId)) {
       if (value && !rootExecutionIds.includes(value)) rootExecutionIds.push(value);
@@ -408,21 +432,16 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       }
     }
 
-    if (executionKeys.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0) {
-      const decisionWhere: Prisma.IntentDecisionWhereInput = {
-        OR: [
-          executionKeys.length > 0 ? { executionKey: { in: executionKeys } } : undefined,
-          rootExecutionIds.length > 0 ? { rootExecutionId: { in: rootExecutionIds } } : undefined,
-          identity.agentInstanceIds.length > 0 ? { agentInstanceId: { in: identity.agentInstanceIds } } : undefined,
-        ].filter(Boolean) as Prisma.IntentDecisionWhereInput[],
-      };
-      if ((decisionWhere.OR || []).length > 0) {
-        await tx.intentDecision.deleteMany({ where: decisionWhere });
-      }
+    if (executionKeys.length > 0) {
+      await tx.intentDecision.deleteMany({
+        where: { executionKey: { in: executionKeys } },
+      });
     }
 
-    if ((executionIntentWhere.OR || []).length > 0) {
-      await tx.executionIntent.deleteMany({ where: executionIntentWhere });
+    if (executionIntentIds.length > 0) {
+      await tx.executionIntent.deleteMany({
+        where: { id: { in: executionIntentIds } },
+      });
     }
 
     const traceDeleteCondition = buildScopedSqlCondition({
