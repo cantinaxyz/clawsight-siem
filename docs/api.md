@@ -87,7 +87,7 @@ Plugin / Client
 - `GET /api/agents`  
   Lists managed agents with filters and summary metadata. By default returns a sanitized projection (excludes `runtimeMeta` and `notes`). Set `includeSensitive=1` to return full records; this requires admin token. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/agents/:agentKey`  
-  Returns one managed agent profile. Auth: required read token (project scope enforced in tenant-token mode).
+  Returns one managed agent profile. By default returns a sanitized projection (excludes `runtimeMeta` and `notes`). Set `includeSensitive=1` to return the full record; this requires admin token. Auth: required read token (project scope enforced in tenant-token mode).
 - `PATCH /api/agents/:agentKey`  
   Updates mutable agent fields (for example display/profile metadata). Auth: admin token.
 - `DELETE /api/agents/:agentKey`  

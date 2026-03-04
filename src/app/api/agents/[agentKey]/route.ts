@@ -30,6 +30,14 @@ export async function GET(
   try {
     const unauthorized = authorizeReadRequest(request);
     if (unauthorized) return unauthorized;
+    const url = new URL(request.url);
+    const includeSensitive =
+      url.searchParams.get("includeSensitive") === "1" ||
+      url.searchParams.get("includeSensitive") === "true";
+    if (includeSensitive) {
+      const unauthorizedAdmin = authorizeAdminRequest(request);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+    }
 
     const { agentKey } = await resolveParams(context.params);
     const decoded = decodeURIComponent(agentKey);
@@ -40,7 +48,27 @@ export async function GET(
     if (!item) {
       return NextResponse.json({ error: "agent not found" }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, data: item });
+    if (includeSensitive) {
+      return NextResponse.json({ ok: true, data: item });
+    }
+    const sanitized = {
+      id: item.id,
+      agentKey: item.agentKey,
+      displayName: item.displayName,
+      reportedName: item.reportedName,
+      sourceType: item.sourceType,
+      projectId: item.projectId,
+      agentInstanceId: item.agentInstanceId,
+      openclawSessionId: item.openclawSessionId,
+      openclawAgentId: item.openclawAgentId,
+      policyProfile: item.policyProfile,
+      firstSeenAt: item.firstSeenAt,
+      lastSeenAt: item.lastSeenAt,
+      lastBootstrapAt: item.lastBootstrapAt,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    };
+    return NextResponse.json({ ok: true, data: sanitized });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
