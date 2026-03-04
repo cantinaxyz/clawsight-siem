@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parsePositiveInt,
@@ -30,14 +31,21 @@ export async function GET(
   context: { params: ParamsInput | Promise<ParamsInput> },
 ) {
   try {
+    const url = new URL(request.url);
+    const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
+
     const { traceId } = await resolveParams(context.params);
     const decodedTraceId = decodeURIComponent(String(traceId || "").trim());
     if (!decodedTraceId) {
       return NextResponse.json({ error: "traceId required" }, { status: 400 });
     }
 
-    const url = new URL(request.url);
     const spanLimit = parsePositiveInt(url.searchParams.get("spanLimit"), 500, 2000);
+    const projectScopeSql = scope.projectId
+      ? Prisma.sql`AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}`
+      : Prisma.empty;
 
     const [traces, spans] = await Promise.all([
       prisma.$queryRaw<TraceRecord[]>(Prisma.sql`
@@ -68,6 +76,7 @@ export async function GET(
           "updatedAt"
         FROM "Trace"
         WHERE "traceId" = ${decodedTraceId}
+        ${projectScopeSql}
         LIMIT 1
       `),
       prisma.$queryRaw<TraceSpanRecord[]>(Prisma.sql`
@@ -105,6 +114,15 @@ export async function GET(
         FROM "TraceSpan" s
         LEFT JOIN "TelemetryEvent" e ON e."eventId" = s."eventExternalId"
         WHERE s."traceId" = ${decodedTraceId}
+          ${
+            scope.projectId
+              ? Prisma.sql`AND s."traceId" IN (
+                  SELECT "traceId" FROM "Trace"
+                  WHERE "traceId" = ${decodedTraceId}
+                    AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}
+                )`
+              : Prisma.empty
+          }
         ORDER BY s."ts" ASC, s."id" ASC
         LIMIT ${spanLimit}
       `),

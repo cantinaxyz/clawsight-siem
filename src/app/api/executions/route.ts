@@ -4,6 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { buildManagedAgentSqlCondition } from "@/lib/agents/filter";
+import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   deriveExecutionAgentKey,
@@ -70,8 +71,11 @@ export async function GET(request: NextRequest) {
     const limit = parsePositiveInt(url.searchParams.get("limit"), 120, 250);
     const search = normalize(url.searchParams.get("search"));
     const agentKey = normalize(url.searchParams.get("agentKey"));
+    const projectId = normalize(url.searchParams.get("projectId"));
     const triggerType = mapTriggerType(url.searchParams.get("triggerType"));
     const outcome = mapExecutionOutcome(url.searchParams.get("outcome"));
+    const scope = resolveProjectScope(request, projectId);
+    if (scope.response) return scope.response;
 
     const conditions: Prisma.Sql[] = [];
     conditions.push(
@@ -96,6 +100,9 @@ export async function GET(request: NextRequest) {
           OR COALESCE("rootExecutionId", '') ILIKE ${needle}
         )`,
       );
+    }
+    if (scope.projectId) {
+      conditions.push(buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId));
     }
     if (agentKey) {
       const condition = buildManagedAgentSqlCondition({

@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { buildProjectWhere, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildTelemetryEventWhere,
@@ -65,7 +66,18 @@ function encodeEvent(name: string, data: unknown) {
  */
 export async function GET(request: NextRequest) {
   const { filters, cursorTs, cursorId } = parseFiltersFromRequest(request);
+  const scope = resolveProjectScope(request, filters.projectId);
+  if (scope.response) return scope.response;
+  filters.projectId = scope.projectId;
   const where = buildTelemetryEventWhere(filters);
+  if (scope.projectId) {
+    const andClauses = Array.isArray(where.AND)
+      ? where.AND
+      : where.AND
+        ? [where.AND]
+        : [];
+    where.AND = [...andClauses, buildProjectWhere(scope.projectId)];
+  }
   const encoder = new TextEncoder();
   const pollTake = Math.min(filters.limit, POLL_BATCH);
   const pollInterval = POLL_MS;

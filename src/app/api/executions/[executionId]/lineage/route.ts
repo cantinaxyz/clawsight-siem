@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveOutcome, resolveTriggerType, type ExecutionTraceRow } from "@/lib/executions/mapper";
 import type { ExecutionLineageNode } from "@/lib/executions/types";
@@ -31,15 +32,24 @@ function toNode(row: ExecutionTraceRow): ExecutionLineageNode {
  * Returns execution lineage rooted at the selected execution/rootExecutionId.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: ParamsInput | Promise<ParamsInput> },
 ) {
   try {
+    const url = new URL(request.url);
+    const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
+
     const { executionId } = await resolveParams(context.params);
     const decoded = decodeURIComponent(String(executionId || "").trim());
     if (!decoded) {
       return NextResponse.json({ ok: false, error: "executionId required" }, { status: 400 });
     }
+
+    const projectScopeSql = scope.projectId
+      ? Prisma.sql`AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}`
+      : Prisma.empty;
 
     const currentRows = await prisma.$queryRaw<ExecutionTraceRow[]>(Prisma.sql`
       SELECT
@@ -59,6 +69,7 @@ export async function GET(
         "rootExecutionId"
       FROM "Trace"
       WHERE "traceId" = ${decoded}
+      ${projectScopeSql}
       LIMIT 1
     `);
 
@@ -85,8 +96,9 @@ export async function GET(
         "projectId",
         "rootExecutionId"
       FROM "Trace"
-      WHERE "traceId" = ${lineageRootId}
-         OR "rootExecutionId" = ${lineageRootId}
+      WHERE ("traceId" = ${lineageRootId}
+         OR "rootExecutionId" = ${lineageRootId})
+      ${scope.projectId ? Prisma.sql`AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}` : Prisma.empty}
       ORDER BY "startedAt" ASC
       LIMIT 250
     `);

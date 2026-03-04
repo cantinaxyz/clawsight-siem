@@ -2,6 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/security/alerts/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type Query = {
@@ -66,6 +67,9 @@ export async function GET(request: NextRequest) {
       sinceHours: parseNonNegativeInt(q.get("sinceHours"), 24),
       limit: parsePositiveInt(q.get("limit"), 200),
     };
+    const scope = resolveProjectScope(request, filters.projectId);
+    if (scope.response) return scope.response;
+    filters.projectId = scope.projectId;
 
     const where: Record<string, unknown> = {};
     if (filters.severity) {
