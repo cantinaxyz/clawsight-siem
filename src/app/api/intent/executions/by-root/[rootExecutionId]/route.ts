@@ -3,7 +3,11 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveProjectScope } from "@/lib/auth";
+import {
+  authorizeAdminRequest,
+  authorizeReadRequest,
+  resolveProjectScope,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   loadExecutionIntentByRoot,
@@ -50,6 +54,9 @@ export async function GET(
   context: { params: Params | Promise<Params> },
 ) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
     const scope = resolveProjectScope(request, requestedProjectId);
@@ -117,6 +124,9 @@ export async function PATCH(
   context: { params: Params | Promise<Params> },
 ) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
     const scope = resolveProjectScope(request, requestedProjectId);

@@ -121,4 +121,4 @@ Plugin / Client
 - `GET /api/intent/executions/by-root/:rootExecutionId`  
   Returns intent baseline and decisions for a root execution id. Auth: required read token (project scope enforced in tenant-token mode).
 - `PATCH /api/intent/executions/by-root/:rootExecutionId`  
-  Applies intent baseline patch/update operations for that execution. Auth: required read token (project scope enforced in tenant-token mode).
+  Applies intent baseline patch/update operations for that execution. Auth: admin token.
