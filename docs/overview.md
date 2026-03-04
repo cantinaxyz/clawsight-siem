@@ -102,7 +102,7 @@ Purpose:
 - Global policy management.
 
 Tabs:
-- `Actions`: command/tool-level deterministic restrictions.
+- `Actions`: command/tool-level deterministic restrictions, including a default run-commands mode and allow/warn/block command lists.
 - `Internet`: network/domain policy controls.
 - `Intent policy`: drift model mode, thresholds, tuning, and advanced behavior.
 
