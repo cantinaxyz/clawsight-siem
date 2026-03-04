@@ -3,7 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeReadRequest, resolveProjectScope } from "@/lib/auth";
+import { authorizeAdminRequest, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parsePositiveInt,
@@ -24,7 +24,7 @@ function isMissingTraceOrphanTableError(err: unknown): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
-    const unauthorized = authorizeReadRequest(request);
+    const unauthorized = authorizeAdminRequest(request);
     if (unauthorized) return unauthorized;
 
     const scope = resolveProjectScope(request, undefined);
