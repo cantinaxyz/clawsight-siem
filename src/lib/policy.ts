@@ -376,12 +376,17 @@ function collectTargetsFromString(input: string, domainStore: Set<string>, ipSto
     try {
       const parsed = new URL(url);
       if (parsed.hostname) {
+        // URL.hostname for IPv6 literals is bracketed (e.g. "[::1]"), so
+        // classify via normalizeIp first to preserve ip-scoped guardrail matching.
+        const ipHost = normalizeIp(parsed.hostname);
+        if (ipHost && isIP(ipHost) !== 0) {
+          addIpCandidate(ipHost, ipStore);
+          continue;
+        }
+
         const hostname = normalizeDomain(parsed.hostname);
-        if (!hostname) continue;
-        if (isIP(hostname) === 0) {
+        if (hostname) {
           domainStore.add(hostname);
-        } else {
-          addIpCandidate(hostname, ipStore);
         }
       }
     } catch {

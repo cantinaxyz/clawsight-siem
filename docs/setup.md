@@ -68,6 +68,7 @@ SIEM_ADMIN_TOKEN=<operator-token>
 
 - Plugin/OpenClaw should only receive the ingest token.
 - SIEM admin UI/API operations should use the admin token.
+- App Router UI pages and Server Actions require the admin bearer token on requests (typically enforced by reverse-proxy auth that injects `Authorization` upstream).
 - For multi-project read scoping, define tenant tokens:
 
 ```bash
