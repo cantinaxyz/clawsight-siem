@@ -103,6 +103,7 @@ type IntentPolicyConfigRow = {
 type ExecutionIntentRow = {
   executionKey: string;
   rootExecutionId: string;
+  projectId: string | null;
   agentInstanceId: string | null;
   managedAgentKey: string | null;
   driftScore: number;
@@ -598,6 +599,48 @@ function executionKey(rootExecutionId: string, agentInstanceId?: string | null):
   const root = rootExecutionId.trim();
   const agent = String(agentInstanceId || "unknown").trim();
   return `${agent}:${root}`;
+}
+
+function normalizeProjectId(value: unknown): string {
+  return normalize(value) || "default";
+}
+
+function hasExecutionIdentityConflict(
+  existing: ExecutionIntentRow,
+  input: {
+    rootExecutionId: string;
+    projectId?: string | null;
+    agentInstanceId?: string | null;
+    managedAgentKey?: string | null;
+  },
+): boolean {
+  const existingRoot = String(existing.rootExecutionId || "").trim();
+  const incomingRoot = String(input.rootExecutionId || "").trim();
+  if (existingRoot && incomingRoot && existingRoot !== incomingRoot) {
+    return true;
+  }
+
+  const existingAgent = normalize(existing.agentInstanceId);
+  const incomingAgent = normalize(input.agentInstanceId);
+  if (existingAgent && incomingAgent && existingAgent !== incomingAgent) {
+    return true;
+  }
+
+  const existingManaged = normalize(existing.managedAgentKey);
+  const incomingManaged = normalize(input.managedAgentKey);
+  if (existingManaged && incomingManaged && existingManaged !== incomingManaged) {
+    return true;
+  }
+
+  const incomingProject = normalize(input.projectId);
+  if (incomingProject) {
+    const existingProject = normalizeProjectId(existing.projectId);
+    if (existingProject !== incomingProject) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hashText(input: string): string {
@@ -1174,7 +1217,7 @@ async function resolveIntentConfigForRecord(req: Record<string, unknown>): Promi
 
 async function loadExecution(executionKeyValue: string): Promise<ExecutionIntentRow | null> {
   const rows = await prisma.$queryRaw<Array<ExecutionIntentRow>>`
-    SELECT "executionKey","rootExecutionId","agentInstanceId","managedAgentKey","driftScore",
+    SELECT "executionKey","rootExecutionId","projectId","agentInstanceId","managedAgentKey","driftScore",
            "expectedScopes","expectedDomains","taskBoundary","baselinePatched","baselineVersion",
            "baselinePatchedAt","baselinePatchedBy","baselinePatchReason"
     FROM "ExecutionIntent"
@@ -1255,6 +1298,15 @@ async function upsertExecutionIntent(params: {
        ${params.confidence}, ${params.extractionMethod}, 'active', 0, NOW(), NOW())
     ON CONFLICT ("executionKey")
     DO UPDATE SET
+      "rootExecutionId" = EXCLUDED."rootExecutionId",
+      "projectId" = COALESCE(NULLIF(EXCLUDED."projectId", ''), "ExecutionIntent"."projectId"),
+      "agentInstanceId" = COALESCE(NULLIF(EXCLUDED."agentInstanceId", ''), "ExecutionIntent"."agentInstanceId"),
+      "agentName" = COALESCE(NULLIF(EXCLUDED."agentName", ''), "ExecutionIntent"."agentName"),
+      "managedAgentKey" = COALESCE(NULLIF(EXCLUDED."managedAgentKey", ''), "ExecutionIntent"."managedAgentKey"),
+      "sessionKey" = COALESCE(NULLIF(EXCLUDED."sessionKey", ''), "ExecutionIntent"."sessionKey"),
+      "runId" = COALESCE(NULLIF(EXCLUDED."runId", ''), "ExecutionIntent"."runId"),
+      "sourceType" = COALESCE(NULLIF(EXCLUDED."sourceType", ''), "ExecutionIntent"."sourceType"),
+      "userPrompt" = COALESCE(NULLIF(EXCLUDED."userPrompt", ''), "ExecutionIntent"."userPrompt"),
       "taskBoundary" = EXCLUDED."taskBoundary",
       "expectedScopes" = EXCLUDED."expectedScopes",
       "expectedDomains" = EXCLUDED."expectedDomains",
@@ -1382,7 +1434,15 @@ export async function evaluateIntentBaseline(
 
   const eKey = executionKey(rootExecutionId, input.agentInstanceId);
   const existing = await loadExecution(eKey);
-  if (existing) {
+  const hasIdentityConflict = existing
+    ? hasExecutionIdentityConflict(existing, {
+        rootExecutionId,
+        projectId: input.projectId,
+        agentInstanceId: input.agentInstanceId,
+        managedAgentKey,
+      })
+    : false;
+  if (existing && !hasIdentityConflict) {
     const expectedScopes = toScopes(existing.expectedScopes);
     const expectedDomains = toDomains(existing.expectedDomains);
     return {
@@ -1437,7 +1497,10 @@ export async function evaluateIntentBaseline(
     action: "allow",
     confidence: extracted.confidence,
     reason: extracted.reason,
-    signals: [llm ? "intent.baseline.llm" : "intent.baseline.heuristic"],
+    signals: [
+      llm ? "intent.baseline.llm" : "intent.baseline.heuristic",
+      ...(hasIdentityConflict ? ["intent.baseline.identity_conflict"] : []),
+    ],
     details: {
       provider: input.provider,
       model: input.model,
@@ -1447,6 +1510,7 @@ export async function evaluateIntentBaseline(
       sensitiveContext: extracted.sensitiveContext,
       boundaryPreview: extracted.taskBoundary.slice(0, 300),
       llmUsage: llm?.usage ?? null,
+      baselineIdentityConflict: hasIdentityConflict,
     },
   });
 
@@ -1458,7 +1522,10 @@ export async function evaluateIntentBaseline(
     confidence: extracted.confidence,
     expectedScopes: extracted.expectedScopes,
     expectedDomains: extracted.expectedDomains,
-    signals: [llm ? "intent.baseline.llm" : "intent.baseline.heuristic"],
+    signals: [
+      llm ? "intent.baseline.llm" : "intent.baseline.heuristic",
+      ...(hasIdentityConflict ? ["intent.baseline.identity_conflict"] : []),
+    ],
     baselineHash: hashText(`${extracted.taskBoundary}:${JSON.stringify(extracted.expectedScopes)}:${JSON.stringify(extracted.expectedDomains)}`),
   };
 }
@@ -1486,9 +1553,17 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
 
   const eKey = executionKey(rootExecutionId, input.agentInstanceId);
   const execution = await loadExecution(eKey);
-  if (!execution) {
+  const hasIdentityConflict = execution
+    ? hasExecutionIdentityConflict(execution, {
+        rootExecutionId,
+        projectId: input.projectId,
+        agentInstanceId: input.agentInstanceId,
+        managedAgentKey,
+      })
+    : false;
+  if (!execution || hasIdentityConflict) {
     await insertDecision({
-      executionKey: eKey,
+      executionKey: hasIdentityConflict ? undefined : eKey,
       rootExecutionId,
       agentInstanceId: input.agentInstanceId,
       requestId: input.requestId,
@@ -1497,16 +1572,19 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
       phase: "tool_call",
       toolName: input.toolName,
       action: "allow",
-      reason: "missing_intent_baseline",
-      signals: ["intent.action.missing_baseline"],
-      details: { managedAgentKey },
+      reason: hasIdentityConflict ? "intent_identity_mismatch" : "missing_intent_baseline",
+      signals: hasIdentityConflict ? ["intent.action.identity_mismatch"] : ["intent.action.missing_baseline"],
+      details: {
+        managedAgentKey,
+        existingExecutionKey: execution?.executionKey ?? null,
+      },
     });
     return {
       action: "allow",
       mode: config.mode,
       decisionId,
-      reason: "missing_intent_baseline",
-      signals: ["intent.action.missing_baseline"],
+      reason: hasIdentityConflict ? "intent_identity_mismatch" : "missing_intent_baseline",
+      signals: hasIdentityConflict ? ["intent.action.identity_mismatch"] : ["intent.action.missing_baseline"],
     };
   }
 
@@ -1677,7 +1755,7 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
  */
 export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<IntentDecisionResponse> {
   const req = input as unknown as Record<string, unknown>;
-  const { config } = await resolveIntentConfigForRecord(req);
+  const { config, managedAgentKey } = await resolveIntentConfigForRecord(req);
   const decisionId = `intent-${crypto.randomUUID().slice(0, 8)}`;
   const rootExecutionId = String(input.rootExecutionId || "").trim();
   const content = String(input.content || "");
@@ -1692,11 +1770,20 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
   }
 
   const eKey = executionKey(rootExecutionId, input.agentInstanceId);
-  const execution = await loadExecution(eKey);
+  const loadedExecution = await loadExecution(eKey);
+  const hasIdentityConflict = loadedExecution
+    ? hasExecutionIdentityConflict(loadedExecution, {
+        rootExecutionId,
+        projectId: input.projectId,
+        agentInstanceId: input.agentInstanceId,
+        managedAgentKey,
+      })
+    : false;
+  const execution = hasIdentityConflict ? null : loadedExecution;
   const signals = detectInjectionSignals(content);
   if (signals.length === 0) {
     await insertDecision({
-      executionKey: execution?.executionKey ?? eKey,
+      executionKey: execution?.executionKey,
       rootExecutionId,
       agentInstanceId: input.agentInstanceId,
       requestId: input.requestId,
@@ -1713,6 +1800,7 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
         toolCallId: input.toolCallId,
         isSynthetic: Boolean(input.isSynthetic),
         contentHash: hashText(content),
+        identityMismatch: hasIdentityConflict,
       },
     });
     return {
@@ -1750,9 +1838,11 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
     sanitizedContent = undefined;
   }
 
-  await setExecutionDrift(eKey, driftScore, action === "block" ? "blocked" : undefined);
+  if (execution?.executionKey) {
+    await setExecutionDrift(execution.executionKey, driftScore, action === "block" ? "blocked" : undefined);
+  }
   await insertDecision({
-    executionKey: execution?.executionKey ?? eKey,
+    executionKey: execution?.executionKey,
     rootExecutionId,
     agentInstanceId: input.agentInstanceId,
     requestId: input.requestId,
@@ -1771,6 +1861,7 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
       contentHash: hashText(content),
       sanitizedHash: sanitizedContent ? hashText(sanitizedContent) : null,
       outputBytes: Buffer.byteLength(content, "utf8"),
+      identityMismatch: hasIdentityConflict,
       contributions: [
         { signal: "output.base", delta: config.signalWeights.outputBase },
         { signal: "output.signals", delta: Math.min(22, signals.length * Math.max(1, config.signalWeights.outputPerSignal)) },
