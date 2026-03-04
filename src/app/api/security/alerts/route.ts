@@ -2,7 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/security/alerts/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type Query = {
@@ -45,6 +45,9 @@ function parseNonNegativeInt(value: string | null, fallback: number): number {
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const q = url.searchParams;
     const filters: Query = {
@@ -119,7 +122,7 @@ export async function GET(request: NextRequest) {
     if (filters.minRisk && filters.minRisk > 0) {
       where.riskScore = { gte: filters.minRisk };
     }
-    if (filters.sinceHours) {
+    if (filters.sinceHours !== undefined) {
       const since = new Date(Date.now() - filters.sinceHours * 60 * 60 * 1000);
       where.ts = { gte: since };
     }

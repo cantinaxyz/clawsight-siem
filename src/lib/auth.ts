@@ -85,6 +85,9 @@ function resolveAuthContext(
 
   if (!hasProjectScopedAuth) {
     if (!expectedStaticToken) {
+      if (requireToken) {
+        return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+      }
       return { context: { kind: "none" } };
     }
     if (!provided) {
@@ -157,6 +160,19 @@ export function authorizeIngestRequest(req: Request): Response | null {
  */
 export function authorizeAdminRequest(req: Request): Response | null {
   const auth = resolveAuthContext(req, { requireToken: true, capability: "admin" });
+  if (auth.response) {
+    return auth.response;
+  }
+  return null;
+}
+
+/**
+ * Validates bearer token auth for read/query API routes.
+ *
+ * Accepts admin token, legacy shared token, or tenant project token.
+ */
+export function authorizeReadRequest(req: Request): Response | null {
+  const auth = resolveAuthContext(req, { requireToken: true, capability: "scope" });
   if (auth.response) {
     return auth.response;
   }

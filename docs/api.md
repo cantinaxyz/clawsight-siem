@@ -77,7 +77,7 @@ Plugin / Client
 ## Alerts
 
 - `GET /api/security/alerts`  
-  Returns alert records for triage and investigations. Auth: project-scoped read when tenant tokens are enabled.
+  Returns alert records for triage and investigations. Auth: required (admin token, legacy shared token, or tenant token), with server-side project-scope enforcement when tenant tokens are enabled.
 - `POST /api/admin/alerts/migrate-v2`  
   Admin utility endpoint to migrate/normalize alert records into execution-v2 model. Auth: admin token.
 
