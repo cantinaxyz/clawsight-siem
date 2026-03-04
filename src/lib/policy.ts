@@ -3,6 +3,7 @@
  */
 import crypto from "node:crypto";
 import { isIP } from "node:net";
+import { domainToASCII } from "node:url";
 import type { PolicyRule } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { deriveManagedAgentKey } from "@/lib/agents/identity";
@@ -251,7 +252,66 @@ function matchesExecBlockCommand(command: string, needle: string): boolean {
 }
 
 function normalizeDomain(value: string): string {
-  return value.trim().toLowerCase().replace(/\.$/, "");
+  let candidate = value
+    .trim()
+    .toLowerCase()
+    .replace(/^[`"'({<\[]+/, "")
+    .replace(/[)\]"'}>,;.!?]+$/, "");
+  if (!candidate) return "";
+
+  if (candidate.includes("://")) {
+    try {
+      const parsed = new URL(candidate);
+      candidate = parsed.hostname.toLowerCase();
+    } catch {
+      // keep original candidate
+    }
+  }
+
+  if (candidate.includes("@")) {
+    candidate = candidate.slice(candidate.lastIndexOf("@") + 1);
+  }
+
+  if (candidate.startsWith("[")) {
+    const end = candidate.indexOf("]");
+    if (end > 0) {
+      candidate = candidate.slice(1, end);
+    }
+  }
+
+  const slashIdx = candidate.indexOf("/");
+  if (slashIdx > 0) candidate = candidate.slice(0, slashIdx);
+  const queryIdx = candidate.indexOf("?");
+  if (queryIdx > 0) candidate = candidate.slice(0, queryIdx);
+  const hashIdx = candidate.indexOf("#");
+  if (hashIdx > 0) candidate = candidate.slice(0, hashIdx);
+
+  if (candidate.includes(":") && candidate.indexOf(":") === candidate.lastIndexOf(":")) {
+    const [hostPart, portPart] = candidate.split(":");
+    if (hostPart && portPart && /^\d+$/.test(portPart)) {
+      candidate = hostPart;
+    }
+  }
+
+  candidate = candidate.replace(/\.$/, "").trim();
+  if (!candidate || isIP(candidate) !== 0 || !candidate.includes(".")) return "";
+
+  const ascii = domainToASCII(candidate);
+  const normalized = (ascii || candidate).toLowerCase().replace(/\.$/, "");
+  if (!normalized || isIP(normalized) !== 0 || !normalized.includes(".")) return "";
+
+  const labels = normalized.split(".");
+  const validLabels = labels.every(
+    (label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      !label.startsWith("-") &&
+      !label.endsWith("-") &&
+      /^[a-z0-9-]+$/.test(label),
+  );
+  if (!validLabels) return "";
+
+  return normalized;
 }
 
 function normalizeIp(value: string): string {
@@ -337,6 +397,10 @@ function collectTargetsFromString(input: string, domainStore: Set<string>, ipSto
     addIpCandidate(ip, ipStore);
   }
   for (const token of input.match(TOKEN_RE) ?? []) {
+    const domain = normalizeDomain(token);
+    if (domain) {
+      domainStore.add(domain);
+    }
     addIpCandidate(token, ipStore);
   }
 }
