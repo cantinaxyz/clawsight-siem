@@ -42,6 +42,7 @@ intent_baseline (once per execution)
    - Triggered before each tool call.
    - Scores alignment drift using signal weights and thresholds.
    - For `exec`-style tools, infers network scope from command indicators (for example ssh/scp/rsync/git/nc/url/ip/runtime socket usage), not just curl/wget.
+   - LLM alignment treats tool params as untrusted data; relief is never applied in enforce mode, and instruction-like payloads in params increase scrutiny instead of reducing drift.
    - Returns enforcement decision.
 3. `intent_output`:
    - Triggered after each tool call.
