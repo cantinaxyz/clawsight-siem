@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { evaluateMessageDecision, evaluateToolDecision } from "@/lib/policy";
 import { evaluateIntentAction, evaluateIntentBaseline, evaluateIntentOutput } from "@/lib/intent-policy";
-import { evaluatePromptInjectionGuard } from "@/lib/prompt-injection";
+import { buildToolInspectionContent, evaluatePromptInjectionGuard } from "@/lib/prompt-injection";
 import { authorizeIngestRequest } from "@/lib/auth";
 
 type Body = {
@@ -39,13 +39,72 @@ export async function POST(req: Request) {
 
     if (kind === "tool") {
       const record = body as Record<string, unknown>;
-      const decision = await evaluateToolDecision(record);
+      const toolName =
+        typeof record.toolName === "string"
+          ? record.toolName
+          : typeof record.tool === "string"
+            ? record.tool
+            : undefined;
+      const requestId = typeof record.requestId === "string" ? record.requestId : undefined;
+      const sessionKey =
+        typeof record.sessionKey === "string"
+          ? record.sessionKey
+          : typeof record.conversationId === "string"
+            ? record.conversationId
+            : undefined;
+
+      const [promptDecision, policyDecision] = await Promise.all([
+        evaluatePromptInjectionGuard({
+          surface: "tool_call",
+          requestId,
+          sessionKey,
+          toolName,
+          content: buildToolInspectionContent(record),
+        }),
+        evaluateToolDecision(record),
+      ]);
+
+      if (promptDecision.action === "block") {
+        return NextResponse.json({
+          action: "block",
+          decisionId: promptDecision.decisionId || policyDecision.decisionId,
+          ruleId: promptDecision.ruleId || policyDecision.ruleId,
+          reason: promptDecision.reason || "blocked by prompt injection guard",
+          promptInjection: {
+            action: promptDecision.action,
+            decisionId: promptDecision.decisionId,
+            ruleId: promptDecision.ruleId,
+            reason: promptDecision.reason,
+            enforcement: promptDecision.enforcement,
+            signals: promptDecision.signals,
+            modelVerdict: promptDecision.modelVerdict,
+            modelConfidence: promptDecision.modelConfidence,
+          },
+          policy: {
+            action: policyDecision.action,
+            decisionId: policyDecision.decisionId,
+            ruleId: policyDecision.ruleId,
+            reason: policyDecision.reason,
+          },
+        });
+      }
+
       return NextResponse.json({
-        action: decision.action,
-        decisionId: decision.decisionId,
-        ruleId: decision.ruleId,
-        reason: decision.reason,
-        params: decision.params,
+        action: policyDecision.action,
+        decisionId: policyDecision.decisionId,
+        ruleId: policyDecision.ruleId,
+        reason: policyDecision.reason,
+        params: policyDecision.params,
+        promptInjection: {
+          action: promptDecision.action,
+          decisionId: promptDecision.decisionId,
+          ruleId: promptDecision.ruleId,
+          reason: promptDecision.reason,
+          enforcement: promptDecision.enforcement,
+          signals: promptDecision.signals,
+          modelVerdict: promptDecision.modelVerdict,
+          modelConfidence: promptDecision.modelConfidence,
+        },
       });
     }
 

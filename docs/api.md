@@ -44,7 +44,7 @@ Plugin / Client
 ## Guardrails and Decisions
 
 - `POST /api/v1/guardrails/decide`  
-  Evaluates policy/intent decisions for tool/message/baseline/action/output checks. Auth: ingest token.
+  Evaluates policy/intent decisions for tool/message/baseline/action/output checks; `kind=tool` composes static policy + prompt-injection `tool_call` hard enforcement (prompt block overrides static allow/warn/modify). Auth: ingest token.
 - `POST /v1/guardrails/decide`  
   Alias route for guardrail decision compatibility. Auth: ingest token.
 - `POST /api/v1/payments/send`  
@@ -121,4 +121,3 @@ Plugin / Client
   Returns intent baseline and decisions for a root execution id. Auth: project-scoped read when tenant tokens are enabled.
 - `PATCH /api/intent/executions/by-root/:rootExecutionId`  
   Applies intent baseline patch/update operations for that execution. Auth: project-scoped read when tenant tokens are enabled.
-

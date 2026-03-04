@@ -57,6 +57,7 @@ Deterministic controls are explicit and predictable:
 - command blocking (for example shell patterns and disallowed commands)
 - tool allow/deny controls
 - internet/domain/IP policies (allow/deny/warn behavior)
+- prompt-injection `tool_call` hard enforcement in the production guardrail decision path
 
 These controls provide hard boundaries independent of LLM interpretation.
 
