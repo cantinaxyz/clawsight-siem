@@ -503,6 +503,86 @@ function applyIpMessageRule(rule: PolicyRule): MessageDecisionResult {
   };
 }
 
+function domainIpActionRank(rule: PolicyRule): number {
+  if (rule.action === "block") return 3;
+  if (rule.action === "warn") return 2;
+  return 1;
+}
+
+/**
+ * Resolves domain/ip policy outcomes using strictest-match semantics.
+ *
+ * For mixed matches (for example allowlisted token + blocked destination),
+ * the most restrictive action wins: `block` > `warn` > `allow`.
+ * For equal-action ties, existing rule order (priority/id) is preserved.
+ */
+function evaluateDomainIpToolDecision(
+  rules: PolicyRule[],
+  targets: { domains: string[]; ips: string[] },
+): ToolDecisionResult | null {
+  let bestRule: PolicyRule | null = null;
+  let bestScope: "domain" | "ip" | null = null;
+  let bestRank = 0;
+
+  for (const rule of rules) {
+    let matched = false;
+    if (rule.scope === "domain" && matchesDomainRule(rule, targets.domains)) {
+      matched = true;
+    } else if (rule.scope === "ip" && matchesIpRule(rule, targets.ips)) {
+      matched = true;
+    }
+    if (!matched) continue;
+
+    const rank = domainIpActionRank(rule);
+    if (rank > bestRank) {
+      bestRule = rule;
+      bestScope = rule.scope === "domain" ? "domain" : "ip";
+      bestRank = rank;
+      if (bestRank === 3) break;
+    }
+  }
+
+  if (!bestRule || !bestScope) return null;
+  return bestScope === "domain" ? applyDomainToolRule(bestRule) : applyIpToolRule(bestRule);
+}
+
+/**
+ * Resolves domain/ip message outcomes using strictest-match semantics.
+ *
+ * For mixed matches (for example allowlisted token + blocked destination),
+ * the most restrictive action wins: `block` > `warn` > `allow`.
+ * For equal-action ties, existing rule order (priority/id) is preserved.
+ */
+function evaluateDomainIpMessageDecision(
+  rules: PolicyRule[],
+  targets: { domains: string[]; ips: string[] },
+): MessageDecisionResult | null {
+  let bestRule: PolicyRule | null = null;
+  let bestScope: "domain" | "ip" | null = null;
+  let bestRank = 0;
+
+  for (const rule of rules) {
+    let matched = false;
+    if (rule.scope === "domain" && matchesDomainRule(rule, targets.domains)) {
+      matched = true;
+    } else if (rule.scope === "ip" && matchesIpRule(rule, targets.ips)) {
+      matched = true;
+    }
+    if (!matched) continue;
+
+    const rank = domainIpActionRank(rule);
+    if (rank > bestRank) {
+      bestRule = rule;
+      bestScope = rule.scope === "domain" ? "domain" : "ip";
+      bestRank = rank;
+      if (bestRank === 3) break;
+    }
+  }
+
+  if (!bestRule || !bestScope) return null;
+  return bestScope === "domain" ? applyDomainMessageRule(bestRule) : applyIpMessageRule(bestRule);
+}
+
 function applyToolRule(rule: PolicyRule, req: Record<string, unknown>): ToolDecisionResult {
   const action = asAction(rule.action);
   const ruleId = String(rule.id);
@@ -707,13 +787,9 @@ export async function evaluateToolDecision(req: Record<string, unknown>): Promis
   const rules = await getScopedRules(["domain", "ip", "tool"], managedAgentKey);
   const targets = extractRequestTargets(req);
   const toolName = getToolName(req);
-  for (const rule of rules) {
-    if (rule.scope === "domain" && matchesDomainRule(rule, targets.domains)) {
-      return applyDomainToolRule(rule);
-    }
-    if (rule.scope === "ip" && matchesIpRule(rule, targets.ips)) {
-      return applyIpToolRule(rule);
-    }
+  const targetDecision = evaluateDomainIpToolDecision(rules, targets);
+  if (targetDecision) {
+    return targetDecision;
   }
   if (toolName === "exec") {
     for (const rule of rules) {
@@ -744,13 +820,11 @@ export async function evaluateMessageDecision(req: Record<string, unknown>): Pro
   const managedAgentKey = getRequestManagedAgentKey(req);
   const rules = await getScopedRules(["domain", "ip", "message"], managedAgentKey);
   const targets = extractRequestTargets(req);
+  const targetDecision = evaluateDomainIpMessageDecision(rules, targets);
+  if (targetDecision) {
+    return targetDecision;
+  }
   for (const rule of rules) {
-    if (rule.scope === "domain" && matchesDomainRule(rule, targets.domains)) {
-      return applyDomainMessageRule(rule);
-    }
-    if (rule.scope === "ip" && matchesIpRule(rule, targets.ips)) {
-      return applyIpMessageRule(rule);
-    }
     if (matchesMessageRule(rule, req)) {
       return applyMessageRule(rule, req);
     }

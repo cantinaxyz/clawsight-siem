@@ -57,6 +57,7 @@ Deterministic controls are explicit and predictable:
 - command blocking (for example shell patterns and disallowed commands)
 - tool allow/deny controls
 - internet/domain/IP policies (allow/deny/warn behavior)
+- domain/IP enforcement resolves mixed matches with strict precedence (`block > warn > allow`) to prevent allowlist-token bypasses from overriding blocked destinations
 - prompt-injection `tool_call` hard enforcement in the production guardrail decision path
 - for `exec` command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
 
