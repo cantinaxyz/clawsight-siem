@@ -40,6 +40,7 @@ intent_baseline (once per execution)
 2. `intent_action`:
    - Triggered before each tool call.
    - Scores alignment drift using signal weights and thresholds.
+   - For `exec`-style tools, infers network scope from command indicators (for example ssh/scp/rsync/git/nc/url/ip/runtime socket usage), not just curl/wget.
    - Returns enforcement decision.
 3. `intent_output`:
    - Triggered after each tool call.
@@ -67,6 +68,7 @@ ClawSight addresses both direct and indirect vectors:
 - Strictness, thresholds, and mode at safety intent UI.
 - Signal weight and mapping controls for domain classes/tool scopes/local-resource rules.
 - Per-agent overrides when one agent needs different tolerance than global default.
+- Execution decision details include scope-contribution evidence and exec network inference indicators for auditability.
 
 ## Current Limitations
 
@@ -75,4 +77,3 @@ ClawSight addresses both direct and indirect vectors:
 - Local file strings can be misread as domains without strong local-resource rules.
 - Aggressive default weights can cause false positives for valid exploratory workflows.
 - LLM-assisted alignment quality depends on model selection, latency budget, and token budget.
-

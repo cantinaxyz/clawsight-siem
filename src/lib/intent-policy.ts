@@ -702,13 +702,104 @@ function scopeRisk(scope: IntentScope, weights: IntentSignalWeights): number {
   return Math.max(1, Math.round(weights.scopeMismatch * multiplier));
 }
 
+type ExecNetworkInference = {
+  networkRead: boolean;
+  networkWrite: boolean;
+  indicators: string[];
+};
+
+function inferExecNetwork(serialized: string): ExecNetworkInference {
+  const indicators: string[] = [];
+  let networkRead = false;
+  let networkWrite = false;
+
+  const checks: Array<{
+    id: string;
+    regex: RegExp;
+    read?: boolean;
+    write?: boolean;
+  }> = [
+    {
+      id: "cli.http_fetch",
+      regex: /\b(curl|wget|httpie|lynx|links|fetch)\b/i,
+      read: true,
+    },
+    {
+      id: "cli.remote_shell_copy",
+      regex: /\b(ssh|scp|sftp|rsync)\b/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "cli.socket_tools",
+      regex: /\b(nc|netcat|ncat|telnet|socat)\b/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "cli.git_network",
+      regex: /\bgit\s+(clone|fetch|pull|push|ls-remote|submodule)\b/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "cli.network_scan_or_dns",
+      regex: /\b(nmap|ping|traceroute|mtr|dig|nslookup|host)\b/i,
+      read: true,
+    },
+    {
+      id: "runtime.python_network_libs",
+      regex: /\bpython(?:3)?\b[\s\S]{0,180}\b(socket|requests|httpx|urllib|aiohttp)\b/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "runtime.node_network_libs",
+      regex: /\b(node|deno|bun)\b[\s\S]{0,180}\b(http|https|net|tls|dns|fetch|axios|ws)\b/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "pkg_manager_network",
+      regex: /\b(npm|pnpm|yarn|pip|pip3|poetry|cargo|go\s+get|apt|apt-get|yum|dnf|brew)\b/i,
+      read: true,
+    },
+    {
+      id: "url.scheme",
+      regex: /\b(?:https?|ftp|ssh|sftp|git|ws|wss|tcp|udp):\/\/[^\s"'<>]+/i,
+      read: true,
+      write: true,
+    },
+    {
+      id: "ip.literal",
+      regex: /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{2,5})?\b/,
+      read: true,
+      write: true,
+    },
+  ];
+
+  for (const check of checks) {
+    if (!check.regex.test(serialized)) continue;
+    indicators.push(check.id);
+    if (check.read) networkRead = true;
+    if (check.write) networkWrite = true;
+  }
+
+  return {
+    networkRead,
+    networkWrite,
+    indicators,
+  };
+}
+
 function toolScopes(
   toolName: string,
   params: Record<string, unknown>,
   config: IntentPolicyConfig,
-): IntentScope[] {
+): { scopes: IntentScope[]; execNetworkInference?: ExecNetworkInference } {
   const normalizedTool = normalize(toolName);
   const scopes = new Set<IntentScope>();
+  let execNetworkInference: ExecNetworkInference | undefined;
   const mapping = config.toolScopeMappings.find((item) =>
     normalizedTool === item.toolPattern || normalizedTool.startsWith(`${item.toolPattern}:`),
   );
@@ -721,7 +812,9 @@ function toolScopes(
 
   const serialized = summarizeObject(params).toLowerCase();
   if (normalizedTool === "exec" || normalizedTool.includes("exec")) {
-    if (/\b(curl|wget|http[s]?:\/\/)/.test(serialized)) scopes.add("network_read");
+    execNetworkInference = inferExecNetwork(serialized);
+    if (execNetworkInference.networkRead) scopes.add("network_read");
+    if (execNetworkInference.networkWrite) scopes.add("network_write");
     if (/\b(cat|grep|head|tail|ls|find|read)\b/.test(serialized)) scopes.add("filesystem_read");
     if (/\b(rm|mv|cp|tee|sed -i|chmod|chown|touch|mkdir|write)\b/.test(serialized)) scopes.add("filesystem_write");
     if (/\b(password|token|secret|id_rsa|\.env|credential)\b/.test(serialized)) scopes.add("credentials_access");
@@ -729,7 +822,10 @@ function toolScopes(
   if (/\b(post|put|patch|upload|send)\b/.test(serialized)) scopes.add("network_write");
   if (/\b(whatsapp|telegram|discord|email|smtp|message)\b/.test(serialized)) scopes.add("messaging");
   if (/\b(cron|schedule|every\s+\d+|interval)\b/.test(serialized)) scopes.add("scheduler");
-  return uniqueScopes([...scopes.values()]);
+  return {
+    scopes: uniqueScopes([...scopes.values()]),
+    execNetworkInference,
+  };
 }
 
 function keywordScopes(input: string): IntentScope[] {
@@ -1418,7 +1514,8 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
 
   const expectedScopes = toScopes(execution.expectedScopes);
   const expectedDomains = toDomains(execution.expectedDomains);
-  const detectedScopes = toolScopes(input.toolName, input.params || {}, config);
+  const scopeEvaluation = toolScopes(input.toolName, input.params || {}, config);
+  const detectedScopes = scopeEvaluation.scopes;
   const targetDomainSet = new Set<string>();
   collectDomainsFromUnknown(input.params || {}, targetDomainSet, 0, "", config.normalizationRules);
   const targetDomains = uniqueList([...targetDomainSet.values()]);
@@ -1548,6 +1645,7 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
       expectedDomains,
       targetDomains,
       contributions,
+      execNetworkInference: scopeEvaluation.execNetworkInference ?? null,
       llm: llmDecision,
       llmUsage: llmDecision?.usage ?? null,
     },
