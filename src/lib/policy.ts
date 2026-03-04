@@ -17,6 +17,7 @@ const IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]
 const IPV6_RE = /\b(?:[a-f0-9]{1,4}:){2,7}[a-f0-9]{1,4}\b/gi;
 const TOKEN_RE = /[^\s"'<>]+/g;
 const EXEC_WRAPPERS = new Set(["sudo", "env", "command", "time", "nohup"]);
+const EXECUTION_TOOL_ALIASES = new Set(["exec", "bash", "gateway"]);
 
 export type ToolDecisionResult = {
   action: DecisionAction;
@@ -89,13 +90,23 @@ function asAction(value: string): DecisionAction {
 }
 
 function getToolName(req: Record<string, unknown>): string {
-  return normalize(req.toolName || req.tool || req.kind);
+  const raw = normalize(req.toolName || req.tool || req.kind);
+  if (!raw) return "";
+  if (raw.startsWith("tool:")) return raw.slice(5);
+  return raw;
 }
 
 function getToolCommand(req: Record<string, unknown>): string {
   const params = asRecord(req.params);
-  const command = normalize(params?.command);
-  if (command) return command;
+  const commandCandidates = [
+    normalize(params?.command),
+    normalize(params?.cmd),
+    normalize(params?.script),
+    normalize(params?.input),
+  ];
+  for (const candidate of commandCandidates) {
+    if (candidate) return candidate;
+  }
   if (!params) return "";
   return normalize(safeStringify(params));
 }
@@ -410,9 +421,16 @@ function matchesToolRule(rule: PolicyRule, req: Record<string, unknown>): boolea
   if (rule.scope !== "tool" || !rule.enabled) return false;
   const toolName = getToolName(req);
   const command = getToolCommand(req);
+  const ruleTool = normalize(rule.toolName);
 
-  if (rule.toolName && normalize(rule.toolName) !== toolName) {
-    return false;
+  if (rule.toolName) {
+    if (ruleTool === "exec") {
+      if (!EXECUTION_TOOL_ALIASES.has(toolName)) {
+        return false;
+      }
+    } else if (ruleTool !== toolName) {
+      return false;
+    }
   }
   if (rule.commandContains) {
     if (toolName === "exec") {

@@ -59,7 +59,8 @@ Deterministic controls are explicit and predictable:
 - internet/domain/IP policies (allow/deny/warn behavior)
 - domain/IP enforcement resolves mixed matches with strict precedence (`block > warn > allow`) to prevent allowlist-token bypasses from overriding blocked destinations
 - prompt-injection `tool_call` hard enforcement in the production guardrail decision path
-- for `exec` command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
+- command execution guardrails are capability-scoped: `exec` rules also apply to execution-capable tool aliases (`exec`, `bash`, `gateway`)
+- for execution command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
 
 These controls provide hard boundaries independent of LLM interpretation.
 
