@@ -1690,6 +1690,7 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
   const currentDrift = Math.max(0, Number(execution.driftScore || 0));
   let driftScore = Math.min(100, currentDrift + scoreDelta);
   let llmDecision: LlmAlignment | null = null;
+  let blockedByFailClosed = false;
 
   const ambiguous =
     scoreDelta >= config.ambiguousLowerBound &&
@@ -1704,7 +1705,17 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
       toolName: input.toolName,
       params: input.params || {},
     });
-    if (llmDecision) {
+    if (!llmDecision && config.llmEnabled) {
+      signals.push("llm.alignment.unavailable");
+      contributions.push({
+        signal: "llm.alignment.unavailable",
+        delta: 0,
+      });
+      if (config.mode === "enforce" && config.failMode === "fail_closed") {
+        blockedByFailClosed = true;
+        signals.push("llm.alignment.fail_closed");
+      }
+    } else if (llmDecision) {
       signals.push(`llm.alignment:${llmDecision.verdict}:${llmDecision.confidence}`);
       const hasUntrustedParamSignals = (llmDecision.paramInstructionSignals?.length ?? 0) > 0;
       if (llmDecision.verdict === "misaligned" && llmDecision.confidence >= 60) {
@@ -1765,6 +1776,9 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
   } else if (driftScore >= config.driftWarnThreshold || scoreDelta >= config.driftWarnThreshold) {
     suggestedAction = "warn";
   }
+  if (blockedByFailClosed) {
+    suggestedAction = "block";
+  }
 
   let action: "allow" | "warn" | "block" = suggestedAction;
   if (config.mode === "off") {
@@ -1772,6 +1786,14 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
   } else if (config.mode === "audit" && action === "block") {
     action = "warn";
   }
+  const reason =
+    blockedByFailClosed
+      ? "intent policy fail-closed: alignment check unavailable"
+      : action === "block"
+        ? "tool action is outside declared task boundary"
+        : action === "warn"
+          ? "tool action may be outside declared task boundary"
+          : "tool action aligned with task boundary";
 
   await setExecutionDrift(eKey, driftScore, action === "block" ? "blocked" : undefined);
   await insertDecision({
@@ -1788,12 +1810,7 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
     scoreDelta,
     driftScore,
     confidence: llmDecision?.confidence,
-    reason:
-      action === "block"
-        ? "tool action is outside declared task boundary"
-        : action === "warn"
-          ? "tool action may be outside declared task boundary"
-          : "tool action aligned with task boundary",
+    reason,
     signals,
     details: {
       managedAgentKey,
@@ -1805,6 +1822,8 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
       execNetworkInference: scopeEvaluation.execNetworkInference ?? null,
       llm: llmDecision,
       llmUsage: llmDecision?.usage ?? null,
+      llmUnavailable: ambiguous && config.llmEnabled && !llmDecision,
+      failClosedTriggered: blockedByFailClosed,
     },
   });
 
@@ -1812,8 +1831,9 @@ export async function evaluateIntentAction(input: IntentActionRequest): Promise<
     action,
     mode: config.mode,
     decisionId,
-    reason:
-      action === "block"
+    reason: blockedByFailClosed
+      ? "intent policy fail-closed blocked action due to unavailable alignment check"
+      : action === "block"
         ? "intent policy blocked action outside task scope"
         : action === "warn"
           ? "intent policy flagged potential scope drift"
