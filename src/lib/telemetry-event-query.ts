@@ -122,6 +122,7 @@ export function buildTelemetryEventWhere(filters: TelemetryEventFilterInput): Pr
 export function serializeTelemetryEvent(event: TelemetryEvent): SerializedTelemetryEvent {
   return {
     ...event,
+    payload: event.payloadRedacted ?? null,
     ts: event.ts.getTime(),
   };
 }

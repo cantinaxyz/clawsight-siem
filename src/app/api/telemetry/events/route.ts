@@ -2,7 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/telemetry/events/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { buildProjectWhere, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectWhere, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildTelemetryEventWhere,
@@ -12,6 +12,9 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const filters = parseTelemetryEventFiltersFromUrl(url);
     const scope = resolveProjectScope(request, filters.projectId);

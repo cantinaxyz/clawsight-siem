@@ -3,7 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parsePositiveInt,
@@ -24,6 +24,9 @@ function isMissingTraceOrphanTableError(err: unknown): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const scope = resolveProjectScope(request, undefined);
     if (scope.response) return scope.response;
     if (scope.projectId) {
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
           "rootExecutionId",
           "rootMessageId",
           "openclawSessionKey",
-          "payload",
+          NULL::jsonb AS "payload",
           "createdAt",
           "updatedAt"
         FROM "TraceOrphan"

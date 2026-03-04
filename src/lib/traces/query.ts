@@ -147,6 +147,7 @@ export function serializeTraceRecord(row: TraceRecord): SerializedTrace {
 export function serializeTraceSpanRecord(row: TraceSpanRecord): SerializedTraceSpan {
   return {
     ...row,
+    payload: row.payloadRedacted ?? row.payloadSummary ?? null,
     ts: row.ts.getTime(),
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
@@ -156,6 +157,7 @@ export function serializeTraceSpanRecord(row: TraceSpanRecord): SerializedTraceS
 export function serializeTraceOrphanRecord(row: TraceOrphanRecord): SerializedTraceOrphan {
   return {
     ...row,
+    payload: null,
     eventTs: row.eventTs ? row.eventTs.getTime() : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),

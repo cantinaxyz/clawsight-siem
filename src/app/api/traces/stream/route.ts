@@ -4,7 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { buildManagedAgentSqlCondition } from "@/lib/agents/filter";
-import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parseTraceFiltersFromUrl,
@@ -108,6 +108,9 @@ function buildFilterSql(
  * Streams trace deltas over SSE using `updatedAt + traceId` cursor ordering.
  */
 export async function GET(request: NextRequest) {
+  const unauthorized = authorizeReadRequest(request);
+  if (unauthorized) return unauthorized;
+
   const { filters, requestedProjectId, cursorTs, cursorTraceId } = parseRequest(request);
   const scope = resolveProjectScope(request, requestedProjectId);
   if (scope.response) return scope.response;

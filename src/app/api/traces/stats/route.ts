@@ -3,7 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function parseNonNegativeInt(value: string | null, fallback: number): number {
@@ -15,6 +15,9 @@ function parseNonNegativeInt(value: string | null, fallback: number): number {
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
     const scope = resolveProjectScope(request, requestedProjectId);

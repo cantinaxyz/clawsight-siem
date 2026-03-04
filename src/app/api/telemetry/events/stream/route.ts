@@ -3,7 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
-import { buildProjectWhere, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectWhere, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildTelemetryEventWhere,
@@ -65,6 +65,9 @@ function encodeEvent(name: string, data: unknown) {
  * Streams telemetry events over SSE using cursor-based polling.
  */
 export async function GET(request: NextRequest) {
+  const unauthorized = authorizeReadRequest(request);
+  if (unauthorized) return unauthorized;
+
   const { filters, cursorTs, cursorId } = parseFiltersFromRequest(request);
   const scope = resolveProjectScope(request, filters.projectId);
   if (scope.response) return scope.response;

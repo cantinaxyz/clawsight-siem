@@ -4,7 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { buildManagedAgentSqlCondition } from "@/lib/agents/filter";
-import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parseTraceFiltersFromUrl,
@@ -19,6 +19,9 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const filters = parseTraceFiltersFromUrl(url);
     const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;

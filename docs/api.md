@@ -24,8 +24,9 @@ Plugin / Client
 
 - Ingest-facing endpoints use `SIEM_INGEST_TOKEN`.
 - Operator/control endpoints use `SIEM_ADMIN_TOKEN`.
-- Read/query endpoints enforce server-side project scope when `SIEM_PROJECT_TOKENS` is configured.
+- Read/query endpoints require bearer auth (`SIEM_ADMIN_TOKEN`, legacy shared token, or tenant token) and enforce server-side project scope when `SIEM_PROJECT_TOKENS` is configured.
 - Legacy `SIEM_API_TOKEN` / `CLAWSIGHT_API_TOKEN` still work as compatibility fallback if split tokens are not set.
+- Read responses return redacted payload content only; raw telemetry payloads are kept server-side for internal persistence.
 - Error semantics:
   - `401 Unauthorized`: missing or invalid token for required surface.
   - `403 Forbidden`: token is valid but requested `projectId` does not match token-bound scope.
@@ -37,9 +38,9 @@ Plugin / Client
 - `POST /v1/telemetry/ingest`  
   Alias route for telemetry ingest compatibility. Auth: ingest token.
 - `GET /api/telemetry/events`  
-  Returns normalized telemetry events with filters and pagination controls. Auth: project-scoped read when tenant tokens are enabled.
+  Returns normalized telemetry events with filters and pagination controls. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/telemetry/events/stream`  
-  Streams live telemetry events over SSE for real-time UI updates. Auth: project-scoped read when tenant tokens are enabled.
+  Streams live telemetry events over SSE for real-time UI updates. Auth: required read token (project scope enforced in tenant-token mode).
 
 ## Guardrails and Decisions
 
@@ -55,22 +56,22 @@ Plugin / Client
 ## Executions
 
 - `GET /api/executions`  
-  Lists execution rollups with trigger/outcome/timing/tool metrics. Auth: project-scoped read when tenant tokens are enabled.
+  Lists execution rollups with trigger/outcome/timing/tool metrics. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/executions/:executionId/lineage`  
-  Returns detailed execution lineage and grouped timeline data. Auth: project-scoped read when tenant tokens are enabled.
+  Returns detailed execution lineage and grouped timeline data. Auth: required read token (project scope enforced in tenant-token mode).
 
 ## Traces (Compatibility and Low-Level Debug)
 
 - `GET /api/traces`  
-  Lists trace-level correlation records with filters. Auth: project-scoped read when tenant tokens are enabled.
+  Lists trace-level correlation records with filters. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/traces/stats`  
-  Returns aggregate trace statistics for a selected time window. Auth: project-scoped read when tenant tokens are enabled.
+  Returns aggregate trace statistics for a selected time window. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/traces/stream`  
-  Streams trace updates over SSE. Auth: project-scoped read when tenant tokens are enabled.
+  Streams trace updates over SSE. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/traces/:traceId`  
-  Returns one trace with summary metadata. Auth: project-scoped read when tenant tokens are enabled.
+  Returns one trace with summary metadata. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/traces/:traceId/spans`  
-  Returns spans for a trace with cursor-based pagination. Auth: project-scoped read when tenant tokens are enabled.
+  Returns spans for a trace with cursor-based pagination. Auth: required read token (project scope enforced in tenant-token mode).
 - `GET /api/traces/orphans`  
   Lists orphan telemetry records that could not be safely correlated. Auth: admin/global only; tenant-scoped tokens receive `403`.
 
@@ -118,6 +119,6 @@ Plugin / Client
 - `POST /api/intent/config`  
   Saves intent configuration payload. Auth: admin token.
 - `GET /api/intent/executions/by-root/:rootExecutionId`  
-  Returns intent baseline and decisions for a root execution id. Auth: project-scoped read when tenant tokens are enabled.
+  Returns intent baseline and decisions for a root execution id. Auth: required read token (project scope enforced in tenant-token mode).
 - `PATCH /api/intent/executions/by-root/:rootExecutionId`  
-  Applies intent baseline patch/update operations for that execution. Auth: project-scoped read when tenant tokens are enabled.
+  Applies intent baseline patch/update operations for that execution. Auth: required read token (project scope enforced in tenant-token mode).

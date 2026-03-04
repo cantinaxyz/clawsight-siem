@@ -45,7 +45,7 @@ Core capabilities:
 - Ingest normalized telemetry from OpenClaw-integrated plugins.
 - Correlate events into execution chains (`Trace` + `TraceSpan` compatibility model).
 - Persist unmatched telemetry separately (`TraceOrphan`) for audit integrity.
-- Preserve payload evidence (`payload` and `payloadRedacted`) for investigation.
+- Preserve payload evidence server-side while exposing redacted payloads in read APIs.
 - Power live operator views across Dashboard, Events, Executions, Alerts, Agents, and Safety.
 
 ## Architecture diagram
@@ -144,7 +144,7 @@ echo 'SIEM_PROJECT_TOKENS=default:tenant-default-token,project-a:tenant-a-token'
 Notes:
 - `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
 - `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
-- Authenticated read APIs (including `/api/security/alerts`) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
+- Authenticated read APIs (including telemetry, traces, executions, agents, and alerts) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
 - `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
 - Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
