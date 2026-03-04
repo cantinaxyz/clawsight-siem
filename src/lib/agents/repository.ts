@@ -25,6 +25,32 @@ export type DiscoverAgentInput = AgentIdentityInput & {
 };
 
 /**
+ * Maps a canonical managed-agent key to the single authoritative identity column.
+ *
+ * This prevents mixed identity signals from contaminating other identity fields on
+ * a managed-agent row (for example `inst:*` keys storing unrelated `openclawAgentId`).
+ */
+function canonicalIdentityColumnsFromKey(agentKey: string): {
+  agentInstanceId: string | null;
+  openclawSessionId: string | null;
+  openclawAgentId: string | null;
+} {
+  const parsed = parseManagedAgentKey(agentKey);
+  if (!parsed) {
+    return {
+      agentInstanceId: null,
+      openclawSessionId: null,
+      openclawAgentId: null,
+    };
+  }
+  return {
+    agentInstanceId: parsed.kind === "inst" ? parsed.value : null,
+    openclawSessionId: parsed.kind === "sid" ? parsed.value : null,
+    openclawAgentId: parsed.kind === "oc" ? parsed.value : null,
+  };
+}
+
+/**
  * Upserts discovered agent identities and keeps first/last seen timestamps monotonic.
  *
  * @param inputs Raw discovery signals from telemetry/trace pipelines.
@@ -36,6 +62,7 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
   const normalized = inputs
     .map((item) => {
       const key = deriveManagedAgentKey(item);
+      const canonicalIdentity = canonicalIdentityColumnsFromKey(key);
       const label = deriveManagedAgentLabel(item);
       return {
         key,
@@ -46,9 +73,9 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
         runtimeMeta: item.runtimeMeta ?? null,
         bootstrapAt: item.bootstrapAt ?? null,
         projectId: item.projectId?.trim() || null,
-        agentInstanceId: item.agentInstanceId?.trim() || null,
-        openclawSessionId: item.openclawSessionId?.trim() || null,
-        openclawAgentId: item.openclawAgentId?.trim() || null,
+        agentInstanceId: canonicalIdentity.agentInstanceId,
+        openclawSessionId: canonicalIdentity.openclawSessionId,
+        openclawAgentId: canonicalIdentity.openclawAgentId,
       };
     })
     .sort((a, b) => a.seenAt.getTime() - b.seenAt.getTime());
@@ -73,9 +100,9 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
       },
       update: {
         projectId: item.projectId || undefined,
-        agentInstanceId: item.agentInstanceId || undefined,
-        openclawSessionId: item.openclawSessionId || undefined,
-        openclawAgentId: item.openclawAgentId || undefined,
+        agentInstanceId: item.agentInstanceId,
+        openclawSessionId: item.openclawSessionId,
+        openclawAgentId: item.openclawAgentId,
         reportedName: item.reportedName || undefined,
         runtimeMeta: item.runtimeMeta || undefined,
         sourceType: item.sourceType === "bootstrap" ? "bootstrap" : undefined,
@@ -229,6 +256,43 @@ function buildScopedSqlCondition(input: {
 }
 
 /**
+ * Builds deletion scope from the canonical managed-agent key only.
+ *
+ * This is intentionally strict: destructive cleanup must be anchored to the key's
+ * authoritative identity tuple and never widened by mutable/untrusted identity hints.
+ */
+function buildDeletionIdentityScope(input: {
+  agentKey: string;
+  managedAgentProjectId?: string | null;
+}): {
+  projectId: string;
+  agentInstanceIds: string[];
+  openclawAgentIds: string[];
+  openclawSessionIds: string[];
+  openclawSessionKeys: string[];
+} {
+  const parsed = parseManagedAgentKey(input.agentKey);
+  const fallbackProjectId = String(input.managedAgentProjectId || "").trim() || "default";
+  if (!parsed) {
+    return {
+      projectId: fallbackProjectId,
+      agentInstanceIds: [],
+      openclawAgentIds: [],
+      openclawSessionIds: [],
+      openclawSessionKeys: [],
+    };
+  }
+
+  return {
+    projectId: parsed.projectId || fallbackProjectId,
+    agentInstanceIds: parsed.kind === "inst" ? [parsed.value] : [],
+    openclawAgentIds: parsed.kind === "oc" ? [parsed.value] : [],
+    openclawSessionIds: parsed.kind === "sid" ? [parsed.value] : [],
+    openclawSessionKeys: parsed.kind === "sess" ? [parsed.value] : [],
+  };
+}
+
+/**
  * Permanently deletes a managed agent and all agent-scoped artifacts.
  *
  * This is the destructive cleanup entrypoint used by Agent Settings. It removes:
@@ -249,20 +313,10 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
   });
   if (!managedAgent) return;
 
-  const parsed = parseManagedAgentKey(normalizedKey);
-  const projectId = parsed?.projectId || String(managedAgent.projectId || "").trim() || "default";
-  const scopedInstanceId = parsed?.kind === "inst" ? parsed.value : null;
-  const scopedOpenclawAgentId = parsed?.kind === "oc" ? parsed.value : null;
-  const scopedSessionId = parsed?.kind === "sid" ? parsed.value : null;
-  const scopedSessionKey = parsed?.kind === "sess" ? parsed.value : null;
-
-  const identity = {
-    projectId,
-    agentInstanceIds: nonEmpty([managedAgent.agentInstanceId, scopedInstanceId]),
-    openclawAgentIds: nonEmpty([managedAgent.openclawAgentId, scopedOpenclawAgentId]),
-    openclawSessionIds: nonEmpty([managedAgent.openclawSessionId, scopedSessionId]),
-    openclawSessionKeys: nonEmpty([scopedSessionKey]),
-  };
+  const identity = buildDeletionIdentityScope({
+    agentKey: normalizedKey,
+    managedAgentProjectId: managedAgent.projectId,
+  });
 
   await prisma.$transaction(async (tx) => {
     const traceCondition = buildScopedSqlCondition({
