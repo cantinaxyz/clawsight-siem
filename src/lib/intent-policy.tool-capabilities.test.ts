@@ -85,4 +85,48 @@ describe("intent tool capability mapping coverage", () => {
     expect(decision.scoreDelta).toBeGreaterThan(0);
     expect((decision.signals ?? []).some((signal) => signal.startsWith("scope.mismatch:execution:"))).toBe(true);
   });
+
+  it("applies filesystem_write drift for apply_patch-prefixed tool names", async () => {
+    queryRawMock
+      .mockResolvedValueOnce([]) // agent config lookup
+      .mockResolvedValueOnce([]) // global config lookup
+      .mockResolvedValueOnce([makeExecutionRow()]); // execution lookup
+
+    const decision = await evaluateIntentAction({
+      rootExecutionId: "exec-capabilities",
+      agentInstanceId: "agent-1",
+      projectId: "project-a",
+      toolName: "apply_patch:workspace",
+      params: {
+        path: "README.md",
+        patch: "*** Begin Patch\n*** End Patch\n",
+      },
+    });
+
+    expect(decision.action).toBe("allow");
+    expect(decision.scoreDelta).toBeGreaterThan(0);
+    expect((decision.signals ?? []).some((signal) => signal.startsWith("scope.mismatch:filesystem_write:"))).toBe(true);
+  });
+
+  it("applies execution drift for process-prefixed tool names", async () => {
+    queryRawMock
+      .mockResolvedValueOnce([]) // agent config lookup
+      .mockResolvedValueOnce([]) // global config lookup
+      .mockResolvedValueOnce([makeExecutionRow()]); // execution lookup
+
+    const decision = await evaluateIntentAction({
+      rootExecutionId: "exec-capabilities",
+      agentInstanceId: "agent-1",
+      projectId: "project-a",
+      toolName: "process:start",
+      params: {
+        action: "start",
+        command: "python worker.py",
+      },
+    });
+
+    expect(decision.action).toBe("allow");
+    expect(decision.scoreDelta).toBeGreaterThan(0);
+    expect((decision.signals ?? []).some((signal) => signal.startsWith("scope.mismatch:execution:"))).toBe(true);
+  });
 });
