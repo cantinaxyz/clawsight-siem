@@ -108,7 +108,8 @@ flowchart LR
 
 ```bash
 cp .env.example .env
-echo 'SIEM_API_TOKEN=devtoken' >> .env
+echo 'SIEM_INGEST_TOKEN=dev-ingest-token' >> .env
+echo 'SIEM_ADMIN_TOKEN=dev-admin-token' >> .env
 docker compose up --build
 ```
 
@@ -126,11 +127,23 @@ pnpm dev
 
 ## Required configuration
 
-Set ingest token (recommended outside local-only testing):
+Set split tokens (recommended):
 
 ```bash
-echo 'siem_API_TOKEN=devtoken' >> .env
+echo 'SIEM_INGEST_TOKEN=dev-ingest-token' >> .env
+echo 'SIEM_ADMIN_TOKEN=dev-admin-token' >> .env
 ```
+
+Optional multi-project read scoping:
+
+```bash
+echo 'SIEM_PROJECT_TOKENS=default:tenant-default-token,project-a:tenant-a-token' >> .env
+```
+
+Notes:
+- `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
+- `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
+- `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
 
 For intent-policy LLM extraction/alignment checks (and optional inbound prompt-injection classification):
 
@@ -144,7 +157,7 @@ echo 'OPENAI_API_KEY=sk-...' >> .env
 npx -y @cantinasecurity/clawsight install \
   --mode enforce \
   --platform-url http://127.0.0.1:3000 \
-  --token devtoken \
+  --token dev-ingest-token \
   --agent-name openclaw-lab-prod \
   --link
 ```

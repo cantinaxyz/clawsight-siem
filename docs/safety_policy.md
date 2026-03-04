@@ -45,6 +45,12 @@ At runtime, plugin hooks key lifecycle points:
 
 This gives both prevention points (pre-action) and evidence points (post-action).
 
+### 1.1) Credential Boundaries
+
+- Runtime/plugin calls (`/api/telemetry/ingest`, `/api/v1/guardrails/decide`) are authenticated with `SIEM_INGEST_TOKEN`.
+- Operator configuration and simulation APIs (`/api/safety/*`, `/api/intent/config`) require `SIEM_ADMIN_TOKEN`.
+- This separation prevents a compromised ingest credential from directly changing global safety posture.
+
 ### 2) Deterministic Safety Controls
 
 Deterministic controls are explicit and predictable:

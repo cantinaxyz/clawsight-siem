@@ -44,12 +44,29 @@ npx -y @cantinasecurity/clawsight install \
 
 Key flags:
 - `--platform-url`: SIEM endpoint used for ingest and guardrail calls.
-- `--token`: shared auth token.
+- `--token`: ingest token (`SIEM_INGEST_TOKEN`) used only for plugin-facing endpoints.
 - `--mode`: policy mode (`audit` or `enforce` recommended).
 - `--agent-name`: stable human-readable identity for agent registry.
 - `--link`: links plugin into OpenClaw gateway plugin config.
 
 After install, restart OpenClaw gateway.
+
+### 2.1) Credential Separation (Recommended)
+
+Use separate credentials for least privilege:
+
+```bash
+SIEM_INGEST_TOKEN=<plugin-token>
+SIEM_ADMIN_TOKEN=<operator-token>
+```
+
+- Plugin/OpenClaw should only receive the ingest token.
+- SIEM admin UI/API operations should use the admin token.
+- For multi-project read scoping, define tenant tokens:
+
+```bash
+SIEM_PROJECT_TOKENS=default:<token-default>,project-a:<token-a>,project-b:<token-b>
+```
 
 ### 3) Remote SIEM via SSH Tunnel
 
@@ -79,3 +96,4 @@ Repeat installation per agent instance with unique `--agent-name` values. This a
 - Inventory freshness depends on plugin periodic reporting and successful connectivity.
 - If plugin was installed without proper agent identity fields, early telemetry may appear as generic/default source until reconfigured.
 - Clock skew between agent and server can affect timeline ordering and relative-time UX.
+- `TraceOrphan` records are not currently project-attributed, so tenant-scoped tokens cannot access orphan feed endpoints.

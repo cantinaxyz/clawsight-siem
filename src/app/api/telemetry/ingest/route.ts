@@ -4,7 +4,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { ingestEvents, type TelemetryInput } from "@/lib/telemetry";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeIngestRequest } from "@/lib/auth";
 
 function normalizeHeaderRequestId(req: Request): string | undefined {
   const value =
@@ -71,7 +71,7 @@ function getClientPort(req: Request): number | undefined {
  */
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeIngestRequest(req);
     if (unauthorized) {
       return unauthorized;
     }

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { evaluateMessageDecision, evaluateToolDecision } from "@/lib/policy";
 import { evaluateIntentAction, evaluateIntentBaseline, evaluateIntentOutput } from "@/lib/intent-policy";
 import { evaluatePromptInjectionGuard } from "@/lib/prompt-injection";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeIngestRequest } from "@/lib/auth";
 
 type Body = {
   kind?: "tool" | "message" | "inbound_message" | "intent_baseline" | "intent_action" | "intent_output";
@@ -14,7 +14,7 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeIngestRequest(req);
     if (unauthorized) {
       return unauthorized;
     }

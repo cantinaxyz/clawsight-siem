@@ -9,6 +9,16 @@ const siemToken =
   process.env.CLAWSIGHT_API_TOKEN?.trim() ||
   "";
 
+const ingestToken =
+  process.env.SIEM_INGEST_TOKEN?.trim() ||
+  process.env.CLAWSIGHT_INGEST_TOKEN?.trim() ||
+  siemToken;
+
+const adminToken =
+  process.env.SIEM_ADMIN_TOKEN?.trim() ||
+  process.env.CLAWSIGHT_ADMIN_TOKEN?.trim() ||
+  siemToken;
+
 type AuthContext =
   | { kind: "none" }
   | { kind: "global" }
@@ -55,15 +65,26 @@ function extractBearer(req: Request): string {
   return raw.slice(7).trim();
 }
 
-function resolveAuthContext(req: Request, options?: { requireToken?: boolean }): {
+function resolveAuthContext(
+  req: Request,
+  options?: { requireToken?: boolean; capability?: "scope" | "admin" | "ingest" },
+): {
   context?: AuthContext;
   response?: Response;
 } {
   const requireToken = options?.requireToken === true;
+  const capability = options?.capability || "scope";
   const provided = extractBearer(req);
 
+  const expectedStaticToken =
+    capability === "admin"
+      ? adminToken
+      : capability === "ingest"
+        ? ingestToken
+        : siemToken;
+
   if (!hasProjectScopedAuth) {
-    if (!siemToken) {
+    if (!expectedStaticToken) {
       return { context: { kind: "none" } };
     }
     if (!provided) {
@@ -72,7 +93,7 @@ function resolveAuthContext(req: Request, options?: { requireToken?: boolean }):
       }
       return { context: { kind: "none" } };
     }
-    if (provided !== siemToken) {
+    if (provided !== expectedStaticToken) {
       return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
     return { context: { kind: "global" } };
@@ -81,9 +102,25 @@ function resolveAuthContext(req: Request, options?: { requireToken?: boolean }):
   if (!provided) {
     return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  if (siemToken && provided === siemToken) {
+
+  if (capability === "admin") {
+    if (!adminToken || provided !== adminToken) {
+      return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+    }
     return { context: { kind: "global" } };
   }
+
+  if (capability === "ingest") {
+    if (!ingestToken || provided !== ingestToken) {
+      return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+    }
+    return { context: { kind: "global" } };
+  }
+
+  if ((adminToken && provided === adminToken) || (siemToken && provided === siemToken)) {
+    return { context: { kind: "global" } };
+  }
+
   const projectId = tokenToProject.get(provided);
   if (!projectId) {
     return { response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
@@ -97,7 +134,29 @@ function resolveAuthContext(req: Request, options?: { requireToken?: boolean }):
  * @returns `null` when authorized, otherwise a 401 `Response` object.
  */
 export function authorizeRequest(req: Request): Response | null {
-  const auth = resolveAuthContext(req, { requireToken: true });
+  const auth = resolveAuthContext(req, { requireToken: true, capability: "admin" });
+  if (auth.response) {
+    return auth.response;
+  }
+  return null;
+}
+
+/**
+ * Validates bearer token auth for ingest/agent-facing API routes.
+ */
+export function authorizeIngestRequest(req: Request): Response | null {
+  const auth = resolveAuthContext(req, { requireToken: true, capability: "ingest" });
+  if (auth.response) {
+    return auth.response;
+  }
+  return null;
+}
+
+/**
+ * Validates bearer token auth for operator/admin API routes.
+ */
+export function authorizeAdminRequest(req: Request): Response | null {
+  const auth = resolveAuthContext(req, { requireToken: true, capability: "admin" });
   if (auth.response) {
     return auth.response;
   }
@@ -114,7 +173,7 @@ export function resolveProjectScope(
   req: Request,
   requestedProjectId?: string | null,
 ): { projectId?: string; response?: Response } {
-  const auth = resolveAuthContext(req, { requireToken: false });
+  const auth = resolveAuthContext(req, { requireToken: false, capability: "scope" });
   if (auth.response) {
     return { response: auth.response };
   }

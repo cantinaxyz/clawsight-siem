@@ -3,10 +3,13 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
     const url = new URL(request.url);
     const window = url.searchParams.get("window") || "24h";
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);

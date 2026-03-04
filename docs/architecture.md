@@ -108,3 +108,17 @@ flowchart LR
 - Correlation prefers strong execution identifiers (`rootExecutionId`, `traceId`, `rootMessageId`, run/session ids).
 - Lifecycle events are normalized into stages (user input, model prep, tool execution, response, completion).
 - UI surfaces execution outcome separately from internal warning/error/block counters.
+
+### 5) Auth and Tenancy Boundary
+
+- Capability-separated credentials:
+  - `SIEM_INGEST_TOKEN`: plugin-facing ingest/decision routes.
+  - `SIEM_ADMIN_TOKEN`: operator control-plane routes (safety + intent config).
+- Optional tenant read isolation:
+  - `SIEM_PROJECT_TOKENS=projectA:tokenA,projectB:tokenB`
+  - server derives allowed `projectId` from token, not from caller query params.
+- Enforcement behavior:
+  - `401` for missing/invalid token.
+  - `403` for valid token + project scope mismatch.
+- Compatibility mode:
+  - legacy `SIEM_API_TOKEN`/`CLAWSIGHT_API_TOKEN` remains supported, but uses shared privileges and should be avoided in production.
