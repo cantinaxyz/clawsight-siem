@@ -108,6 +108,7 @@ flowchart LR
 
 ```bash
 cp .env.example .env
+# edit .env and set a strong POSTGRES_PASSWORD before starting
 echo 'SIEM_INGEST_TOKEN=dev-ingest-token' >> .env
 echo 'SIEM_ADMIN_TOKEN=dev-admin-token' >> .env
 docker compose up --build
@@ -144,6 +145,7 @@ Notes:
 - `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
 - `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
+- Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
 
 For intent-policy LLM extraction/alignment checks (and optional inbound prompt-injection classification):
 

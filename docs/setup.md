@@ -29,6 +29,11 @@ OpenClaw Agent Instance A        OpenClaw Agent Instance B
 
 Start the SIEM (database + app). In local environments this is typically done with Docker Compose and then accessed at `http://localhost:3000`.
 
+Security defaults:
+- Set a strong `POSTGRES_PASSWORD` in `.env` before running compose.
+- Postgres is intentionally not exposed on host ports by default.
+- If you need host DB access for local debugging, bind loopback only (`127.0.0.1:5432:5432`) and never publish Postgres publicly.
+
 ### 2) Install Plugin and Link to SIEM
 
 Example install command:
