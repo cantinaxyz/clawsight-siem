@@ -14,6 +14,7 @@ import {
 import { parseManagedAgentKey } from "@/lib/agents/identity";
 import { loadIntentPolicyConfig, saveIntentPolicyConfig } from "@/lib/intent-policy";
 import { prisma } from "@/lib/prisma";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 import ConsoleHeader from "./_components/ConsoleHeader";
 import TabNav, { AGENT_TABS, type AgentTabKey } from "./_components/TabNav";
 import OverviewTab from "./_components/OverviewTab";
@@ -488,6 +489,7 @@ function parseInventorySnapshot(payload: unknown): ParsedInventorySnapshot | nul
  */
 async function updateAgentAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const agentKey = text(formData, "agentKey");
   if (!agentKey) return;
 
@@ -525,6 +527,7 @@ async function updateAgentAction(formData: FormData) {
  */
 async function deleteAgentAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const agentKey = text(formData, "agentKey");
   const confirm = text(formData, "confirm");
   if (!agentKey || confirm !== "DELETE") return;
@@ -539,6 +542,7 @@ async function deleteAgentAction(formData: FormData) {
  */
 async function createScopedRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const agentKey = text(formData, "agentKey");
   if (!agentKey) return;
 
@@ -568,11 +572,18 @@ async function createScopedRuleAction(formData: FormData) {
  */
 async function deleteScopedRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const agentKey = text(formData, "agentKey");
   const id = Number(text(formData, "id"));
   if (!agentKey || !Number.isInteger(id) || id <= 0) return;
 
-  await prisma.policyRule.delete({ where: { id } });
+  await prisma.policyRule.deleteMany({
+    where: {
+      id,
+      scopeLevel: "agent",
+      managedAgentKey: agentKey,
+    },
+  });
   revalidatePath(`/agents/${encodeURIComponent(agentKey)}`);
 }
 
