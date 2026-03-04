@@ -270,6 +270,44 @@ function buildScopedSqlCondition(input: {
 }
 
 /**
+ * Builds an identity-only SQL predicate (no project scope) for optional identity columns.
+ */
+function buildIdentitySqlPredicate(input: {
+  agentInstanceIds: string[];
+  openclawAgentIds: string[];
+  openclawSessionIds: string[];
+  openclawSessionKeys: string[];
+  agentInstanceColumn?: Prisma.Sql;
+  openclawAgentColumn?: Prisma.Sql;
+  openclawSessionIdColumn?: Prisma.Sql;
+  openclawSessionKeyColumn?: Prisma.Sql;
+}): Prisma.Sql | null {
+  const identityPredicates: Prisma.Sql[] = [];
+  if (input.agentInstanceColumn) {
+    for (const value of input.agentInstanceIds) {
+      identityPredicates.push(Prisma.sql`${input.agentInstanceColumn} = ${value}`);
+    }
+  }
+  if (input.openclawAgentColumn) {
+    for (const value of input.openclawAgentIds) {
+      identityPredicates.push(Prisma.sql`${input.openclawAgentColumn} = ${value}`);
+    }
+  }
+  if (input.openclawSessionIdColumn) {
+    for (const value of input.openclawSessionIds) {
+      identityPredicates.push(Prisma.sql`${input.openclawSessionIdColumn} = ${value}`);
+    }
+  }
+  if (input.openclawSessionKeyColumn) {
+    for (const value of input.openclawSessionKeys) {
+      identityPredicates.push(Prisma.sql`${input.openclawSessionKeyColumn} = ${value}`);
+    }
+  }
+  if (identityPredicates.length === 0) return null;
+  return Prisma.sql`(${Prisma.join(identityPredicates, " OR ")})`;
+}
+
+/**
  * Builds deletion scope from the canonical managed-agent key only.
  *
  * This is intentionally strict: destructive cleanup must be anchored to the key's
@@ -383,14 +421,13 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
 
     if (traceIds.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0) {
       const alertPredicates: Prisma.Sql[] = [];
-      const alertCondition = buildScopedSqlCondition({
+      const alertIdentityPredicate = buildIdentitySqlPredicate({
         ...identity,
-        projectColumn: Prisma.sql`"projectId"`,
         agentInstanceColumn: Prisma.sql`"agentInstanceId"`,
         openclawAgentColumn: Prisma.sql`"openclawAgentId"`,
         openclawSessionKeyColumn: Prisma.sql`"openclawSessionKey"`,
       });
-      if (alertCondition) alertPredicates.push(alertCondition);
+      if (alertIdentityPredicate) alertPredicates.push(alertIdentityPredicate);
       if (traceIds.length > 0) {
         const traceIdSql = Prisma.join(traceIds.map((value) => Prisma.sql`${value}`));
         alertPredicates.push(Prisma.sql`"executionId" IN (${traceIdSql})`);
@@ -402,20 +439,20 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       if (alertPredicates.length > 0) {
         await tx.$executeRaw(Prisma.sql`
           DELETE FROM "ThreatAlert"
-          WHERE ${Prisma.join(alertPredicates, " OR ")}
+          WHERE ${projectScopeSql(Prisma.sql`"projectId"`, identity.projectId)}
+            AND (${Prisma.join(alertPredicates, " OR ")})
         `);
       }
     }
 
     if (traceIds.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0 || identity.openclawAgentIds.length > 0) {
       const riskPredicates: Prisma.Sql[] = [];
-      const riskCondition = buildScopedSqlCondition({
+      const riskIdentityPredicate = buildIdentitySqlPredicate({
         ...identity,
-        projectColumn: Prisma.sql`"projectId"`,
         agentInstanceColumn: Prisma.sql`"agentInstanceId"`,
         openclawAgentColumn: Prisma.sql`"openclawAgentId"`,
       });
-      if (riskCondition) riskPredicates.push(riskCondition);
+      if (riskIdentityPredicate) riskPredicates.push(riskIdentityPredicate);
       if (traceIds.length > 0) {
         const traceIdSql = Prisma.join(traceIds.map((value) => Prisma.sql`${value}`));
         riskPredicates.push(Prisma.sql`"executionId" IN (${traceIdSql})`);
@@ -427,7 +464,8 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       if (riskPredicates.length > 0) {
         await tx.$executeRaw(Prisma.sql`
           DELETE FROM "ExecutionRiskState"
-          WHERE ${Prisma.join(riskPredicates, " OR ")}
+          WHERE ${projectScopeSql(Prisma.sql`"projectId"`, identity.projectId)}
+            AND (${Prisma.join(riskPredicates, " OR ")})
         `);
       }
     }
@@ -474,12 +512,8 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       `);
     }
 
-    if (rootExecutionIds.length > 0 || identity.openclawSessionKeys.length > 0) {
+    if (identity.openclawSessionKeys.length > 0) {
       const orphanPredicates: Prisma.Sql[] = [];
-      if (rootExecutionIds.length > 0) {
-        const rootExecutionSql = Prisma.join(rootExecutionIds.map((value) => Prisma.sql`${value}`));
-        orphanPredicates.push(Prisma.sql`"rootExecutionId" IN (${rootExecutionSql})`);
-      }
       if (identity.openclawSessionKeys.length > 0) {
         const sessionKeySql = Prisma.join(identity.openclawSessionKeys.map((value) => Prisma.sql`${value}`));
         orphanPredicates.push(Prisma.sql`"openclawSessionKey" IN (${sessionKeySql})`);

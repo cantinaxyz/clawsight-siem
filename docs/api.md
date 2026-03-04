@@ -91,7 +91,7 @@ Plugin / Client
 - `PATCH /api/agents/:agentKey`  
   Updates mutable agent fields (for example display/profile metadata).
 - `DELETE /api/agents/:agentKey`  
-  Deletes a managed agent record and related references using key-authoritative identity scope (prevents cross-agent cleanup from mixed identity hints).
+  Deletes a managed agent record and related references using key-authoritative identity scope; alert/risk cleanup is project-scoped and orphan cleanup is restricted to key-bound session scope.
 - `POST /api/agents/:agentKey/profile`  
   Saves agent profile data and scoped policy fields via API form payload.
 
