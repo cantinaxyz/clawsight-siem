@@ -72,6 +72,11 @@ const ACCESS_SECRETS_TOOL_NAMES = [
   "vault_read",
   "env_get",
 ];
+const FILE_WRITE_TOOL_NAMES = [
+  "write",
+  "edit",
+  "apply_patch",
+];
 const HTTPS_ONLY_TOOL_NAMES = [
   "web_fetch",
   "web_search",
@@ -470,17 +475,19 @@ function buildPolicyRows(cfg: SafetyConfig): PolicyInsert[] {
   }
 
   if (cfg.actions.writeFiles !== "allow") {
-    add({
-      name: `safety:actions:write_files:${cfg.actions.writeFiles}`,
-      scope: "tool",
-      action: cfg.actions.writeFiles,
-      priority: 44,
-      enabled: true,
-      toolName: "write",
-      reason:
-        cfg.actions.writeFiles === "block"
-          ? "Safety actions policy blocks file writes"
-          : "Safety actions policy warns on file writes",
+    FILE_WRITE_TOOL_NAMES.forEach((toolName, index) => {
+      add({
+        name: `safety:actions:write_files:${cfg.actions.writeFiles}:tool:${toolName}`,
+        scope: "tool",
+        action: cfg.actions.writeFiles,
+        priority: 44 + index,
+        enabled: true,
+        toolName,
+        reason:
+          cfg.actions.writeFiles === "block"
+            ? "Safety actions policy blocks file writes"
+            : "Safety actions policy warns on file writes",
+      });
     });
   }
 
