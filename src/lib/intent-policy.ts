@@ -215,6 +215,14 @@ const GLOBAL_CONFIG_KEY = "global";
 const URL_RE = /https?:\/\/[^\s"'<>]+/gi;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b/gi;
 const IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g;
+const OUTPUT_INSTRUCTION_OVERRIDE_RE =
+  /\b(ignore|disregard|bypass|override)\b[\s\S]{0,80}\b(instruction|system|developer|previous)\b/i;
+const OUTPUT_ROLE_REDEFINITION_RE = /\byou are now\b|\bnew task\b|\bsystem:\b|\bdeveloper:\b/i;
+const OUTPUT_ROLE_REDEFINITION_LINE_RE = /(?:^\s*(?:[#>*-]\s*)?(?:system|developer)\s*:|\byou are now\b|\bnew task\b)/i;
+const FORCE_OUTPUT_MODIFY_SIGNALS = new Set<string>([
+  "output.instruction_override",
+  "output.role_redefinition",
+]);
 
 const DEFAULT_SIGNAL_WEIGHTS: IntentSignalWeights = {
   scopeMismatch: 1,
@@ -1211,10 +1219,10 @@ function hasDomainMatch(domain: string, expectedDomains: string[], config: Inten
 function detectInjectionSignals(content: string): string[] {
   const signals: string[] = [];
   const lower = content.toLowerCase();
-  if (/\b(ignore|disregard|bypass|override)\b[\s\S]{0,80}\b(instruction|system|developer|previous)\b/i.test(content)) {
+  if (OUTPUT_INSTRUCTION_OVERRIDE_RE.test(content)) {
     signals.push("output.instruction_override");
   }
-  if (/\byou are now\b|\bnew task\b|\bsystem:\b|\bdeveloper:\b/i.test(content)) {
+  if (OUTPUT_ROLE_REDEFINITION_RE.test(content)) {
     signals.push("output.role_redefinition");
   }
   if (/[A-Za-z0-9+/]{220,}={0,2}/.test(content)) {
@@ -1232,9 +1240,9 @@ function detectInjectionSignals(content: string): string[] {
 function sanitizeToolOutput(content: string): string {
   let result = content;
   result = result.replace(/[A-Za-z0-9+/]{220,}={0,2}/g, "[sanitized:encoded-payload]");
-  const blockedLine = /\b(ignore|disregard|bypass|override)\b[\s\S]{0,80}\b(instruction|system|developer|previous)\b/i;
+  result = result.replace(new RegExp(OUTPUT_INSTRUCTION_OVERRIDE_RE.source, "gi"), "[sanitized:instruction-override]");
   const lines = result.split("\n");
-  const filtered = lines.filter((line) => !blockedLine.test(line) && !/\byou are now\b|\bnew task\b|\bsystem:\b/i.test(line));
+  const filtered = lines.filter((line) => !OUTPUT_ROLE_REDEFINITION_LINE_RE.test(line));
   result = filtered.join("\n").trim();
   return result.slice(0, 18_000);
 }
@@ -1900,8 +1908,16 @@ export async function evaluateIntentOutput(input: IntentOutputRequest): Promise<
   let sanitizedContent: string | undefined;
 
   if (config.mode === "enforce" && config.outputSanitization) {
-    sanitizedContent = sanitizeToolOutput(content);
-    action = sanitizedContent !== content ? "modify" : "warn";
+    const candidate = sanitizeToolOutput(content);
+    if (candidate !== content) {
+      sanitizedContent = candidate;
+      action = "modify";
+    } else if (signals.some((signal) => FORCE_OUTPUT_MODIFY_SIGNALS.has(signal))) {
+      sanitizedContent = "[sanitized:potential-instruction-payload]";
+      action = "modify";
+    } else {
+      action = "warn";
+    }
   } else if (config.mode === "off") {
     action = "allow";
   }
