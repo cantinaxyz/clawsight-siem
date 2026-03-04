@@ -40,6 +40,31 @@ function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function parseCsvEnv(value: string | undefined): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function readCsvEnv(primaryKey: string, fallbackKeys: string[] = []): string[] {
+  const values = [
+    ...parseCsvEnv(process.env[primaryKey]),
+    ...fallbackKeys.flatMap((key) => parseCsvEnv(process.env[key])),
+  ];
+  return [...new Set(values)];
+}
+
+const ENV_TOOL_DENYLIST = new Set(
+  readCsvEnv("CLAWSIGHT_TOOL_DENYLIST", ["CLAWDSTRIKE_TOOL_DENYLIST"]),
+);
+const ENV_TOOL_BLOCK_PATTERNS = readCsvEnv("CLAWSIGHT_TOOL_BLOCK_PATTERNS", [
+  "CLAWDSTRIKE_TOOL_BLOCK_PATTERNS",
+]);
+const ENV_MESSAGE_BLOCK_PHRASES = readCsvEnv("CLAWSIGHT_MESSAGE_BLOCK_PHRASES", [
+  "CLAWDSTRIKE_MESSAGE_BLOCK_PHRASES",
+]);
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -375,6 +400,52 @@ function applyMessageRule(
   };
 }
 
+function getEnvToolDecision(req: Record<string, unknown>): ToolDecisionResult | null {
+  const toolName = getToolName(req);
+  if (toolName && ENV_TOOL_DENYLIST.has(toolName)) {
+    return {
+      action: "block",
+      reason: `blocked by environment tool denylist (${toolName})`,
+      decisionId: getDecisionId("tool"),
+      ruleId: "env:tool_denylist",
+    };
+  }
+
+  const command = getToolCommand(req);
+  if (command) {
+    for (const pattern of ENV_TOOL_BLOCK_PATTERNS) {
+      if (command.includes(pattern)) {
+        return {
+          action: "block",
+          reason: `blocked by environment tool block pattern (${pattern})`,
+          decisionId: getDecisionId("tool"),
+          ruleId: "env:tool_block_pattern",
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function getEnvMessageDecision(req: Record<string, unknown>): MessageDecisionResult | null {
+  const content = getMessageContent(req);
+  if (!content) return null;
+
+  for (const phrase of ENV_MESSAGE_BLOCK_PHRASES) {
+    if (content.includes(phrase)) {
+      return {
+        action: "block",
+        reason: `blocked by environment message block phrase (${phrase})`,
+        decisionId: getDecisionId("msg"),
+        ruleId: "env:message_block_phrase",
+      };
+    }
+  }
+
+  return null;
+}
+
 function getRequestManagedAgentKey(req: Record<string, unknown>): string | null {
   const explicit = normalize(req.managedAgentKey);
   if (explicit) return explicit;
@@ -445,6 +516,10 @@ async function getScopedRules(
  * domain -> ip -> tool.
  */
 export async function evaluateToolDecision(req: Record<string, unknown>): Promise<ToolDecisionResult> {
+  const envDecision = getEnvToolDecision(req);
+  if (envDecision) {
+    return envDecision;
+  }
   const managedAgentKey = getRequestManagedAgentKey(req);
   const rules = await getScopedRules(["domain", "ip", "tool"], managedAgentKey);
   const targets = extractRequestTargets(req);
@@ -469,6 +544,10 @@ export async function evaluateToolDecision(req: Record<string, unknown>): Promis
  * domain -> ip -> message.
  */
 export async function evaluateMessageDecision(req: Record<string, unknown>): Promise<MessageDecisionResult> {
+  const envDecision = getEnvMessageDecision(req);
+  if (envDecision) {
+    return envDecision;
+  }
   const managedAgentKey = getRequestManagedAgentKey(req);
   const rules = await getScopedRules(["domain", "ip", "message"], managedAgentKey);
   const targets = extractRequestTargets(req);
