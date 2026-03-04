@@ -4,7 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { buildManagedAgentSqlCondition } from "@/lib/agents/filter";
-import { buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   deriveExecutionAgentKey,
@@ -67,6 +67,9 @@ function mapTriggerType(input: string | null): TriggerType | undefined {
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const limit = parsePositiveInt(url.searchParams.get("limit"), 120, 250);
     const search = normalize(url.searchParams.get("search"));
