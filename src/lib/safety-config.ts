@@ -45,6 +45,48 @@ export type SafetyConfig = {
 
 const GENERATED_PREFIX = "safety:";
 const META_RULE_NAME = "safety:__config__";
+const RUN_COMMANDS_DEFAULT_RULE_PREFIX = "safety:actions:run_commands:default:";
+const INSTALL_DOWNLOAD_EXEC_PATTERNS = [
+  "curl",
+  "wget",
+  "npm install",
+  "pnpm add",
+  "yarn add",
+  "pip install",
+  "apt-get install",
+  "brew install",
+];
+const ACCESS_SECRETS_EXEC_PATTERNS = [
+  ".env",
+  "id_rsa",
+  "/etc/shadow",
+  "aws_secret_access_key",
+  "token",
+  "password",
+  "secret",
+];
+const ACCESS_SECRETS_TOOL_NAMES = [
+  "secrets_get",
+  "secret_get",
+  "credentials_get",
+  "vault_read",
+  "env_get",
+];
+const FILE_WRITE_TOOL_NAMES = [
+  "write",
+  "edit",
+  "apply_patch",
+];
+const HTTPS_ONLY_TOOL_NAMES = [
+  "web_fetch",
+  "web_search",
+  "browser",
+  "navigate",
+  "http",
+  "exec",
+  "bash",
+  "gateway",
+];
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
@@ -354,18 +396,98 @@ function buildPolicyRows(cfg: SafetyConfig): PolicyInsert[] {
     });
   });
 
-  if (cfg.actions.writeFiles !== "allow") {
+  if (cfg.actions.runCommands !== "allow") {
     add({
-      name: `safety:actions:write_files:${cfg.actions.writeFiles}`,
+      name: `${RUN_COMMANDS_DEFAULT_RULE_PREFIX}${cfg.actions.runCommands}`,
       scope: "tool",
-      action: cfg.actions.writeFiles,
-      priority: 44,
+      action: cfg.actions.runCommands,
+      priority: 68,
       enabled: true,
-      toolName: "write",
+      toolName: "exec",
+      commandContains: null,
       reason:
-        cfg.actions.writeFiles === "block"
-          ? "Safety actions policy blocks file writes"
-          : "Safety actions policy warns on file writes",
+        cfg.actions.runCommands === "block"
+          ? "Safety run commands default blocks unmatched execution commands"
+          : "Safety run commands default warns on unmatched execution commands",
+    });
+  }
+
+  if (cfg.actions.installDownloads !== "allow") {
+    add({
+      name: `safety:actions:install_downloads:${cfg.actions.installDownloads}:tool:skill`,
+      scope: "tool",
+      action: cfg.actions.installDownloads,
+      priority: 1,
+      enabled: true,
+      toolName: "skill",
+      reason:
+        cfg.actions.installDownloads === "block"
+          ? "Safety actions policy blocks skill installs"
+          : "Safety actions policy warns on skill installs",
+    });
+    INSTALL_DOWNLOAD_EXEC_PATTERNS.forEach((pattern, index) => {
+      add({
+        name: `safety:actions:install_downloads:${cfg.actions.installDownloads}:exec:${index + 1}`,
+        scope: "tool",
+        action: cfg.actions.installDownloads,
+        priority: 2 + index,
+        enabled: true,
+        toolName: "exec",
+        commandContains: pattern,
+        reason:
+          cfg.actions.installDownloads === "block"
+            ? "Safety actions policy blocks download/install command patterns"
+            : "Safety actions policy warns on download/install command patterns",
+      });
+    });
+  }
+
+  if (cfg.actions.accessSecrets !== "allow") {
+    ACCESS_SECRETS_TOOL_NAMES.forEach((toolName, index) => {
+      add({
+        name: `safety:actions:access_secrets:${cfg.actions.accessSecrets}:tool:${toolName}`,
+        scope: "tool",
+        action: cfg.actions.accessSecrets,
+        priority: 10 + index,
+        enabled: true,
+        toolName,
+        reason:
+          cfg.actions.accessSecrets === "block"
+            ? "Safety actions policy blocks secret-access tools"
+            : "Safety actions policy warns on secret-access tools",
+      });
+    });
+    ACCESS_SECRETS_EXEC_PATTERNS.forEach((pattern, index) => {
+      add({
+        name: `safety:actions:access_secrets:${cfg.actions.accessSecrets}:exec:${index + 1}`,
+        scope: "tool",
+        action: cfg.actions.accessSecrets,
+        priority: 20 + index,
+        enabled: true,
+        toolName: "exec",
+        commandContains: pattern,
+        reason:
+          cfg.actions.accessSecrets === "block"
+            ? "Safety actions policy blocks secret-access command patterns"
+            : "Safety actions policy warns on secret-access command patterns",
+      });
+    });
+  }
+
+  if (cfg.actions.writeFiles !== "allow") {
+    FILE_WRITE_TOOL_NAMES.forEach((toolName, index) => {
+      add({
+        name: `safety:actions:write_files:${cfg.actions.writeFiles}:tool:${toolName}`,
+        scope: "tool",
+        action: cfg.actions.writeFiles,
+        priority: 44 + index,
+        enabled: true,
+        toolName,
+        reason:
+          cfg.actions.writeFiles === "block"
+            ? "Safety actions policy blocks file writes"
+            : "Safety actions policy warns on file writes",
+      });
     });
   }
 
@@ -403,6 +525,21 @@ function buildPolicyRows(cfg: SafetyConfig): PolicyInsert[] {
           : `Safety internet rule #${index + 1}`,
     });
   });
+
+  if (cfg.internet.allowHttpsOnly) {
+    HTTPS_ONLY_TOOL_NAMES.forEach((toolName, index) => {
+      add({
+        name: `safety:internet:https_only:block:${toolName}`,
+        scope: "tool",
+        action: "block",
+        priority: 80 + index,
+        enabled: true,
+        toolName,
+        commandContains: "http://",
+        reason: "Safety internet policy blocks insecure http targets",
+      });
+    });
+  }
 
   if (cfg.internet.blockDirectIpNavigation) {
     add({

@@ -2,6 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/agents/[agentKey]/profile/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { updateManagedAgent } from "@/lib/agents/repository";
 
 type Params = { agentKey: string };
@@ -15,6 +16,9 @@ export async function POST(
   context: { params: Promise<Params> | Params },
 ) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { agentKey } = await resolveParams(context.params);
     const decoded = decodeURIComponent(agentKey);
     const body = (await request.json()) as { policyProfile?: string };

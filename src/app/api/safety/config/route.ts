@@ -2,7 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/safety/config/route.ts.
  */
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { applySafetyConfig, configFromMode, loadSafetyConfig, type SafetyMode } from "@/lib/safety-config";
 
 type Body = {
@@ -22,7 +22,7 @@ function parseMode(value: unknown): SafetyMode | null {
  */
 export async function GET(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeAdminRequest(req);
     if (unauthorized) return unauthorized;
     const config = await loadSafetyConfig();
     return NextResponse.json({ ok: true, config });
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeAdminRequest(req);
     if (unauthorized) return unauthorized;
 
     const body = (await req.json()) as Body;

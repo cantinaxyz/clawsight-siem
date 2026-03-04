@@ -199,6 +199,17 @@ export function evaluateDetections(event: DetectionEvent): {
     });
   }
 
+  if (event.category === "policy" && normalizedOutcome === "modify") {
+    matches.push({
+      ruleId: "policy.modified-action",
+      ruleName: "Policy modified action",
+      severity: "medium",
+      category: "policy",
+      description: "Policy engine modified action output or parameters",
+      details: { reason: event.outcomeReason ?? "policy modify" },
+    });
+  }
+
   if (
     event.category === "session" &&
     event.action === "agent_end" &&

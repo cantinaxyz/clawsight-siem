@@ -4,7 +4,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { ingestEvents, type TelemetryInput } from "@/lib/telemetry";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeIngestRequest } from "@/lib/auth";
 
 function normalizeHeaderRequestId(req: Request): string | undefined {
   const value =
@@ -71,7 +71,7 @@ function getClientPort(req: Request): number | undefined {
  */
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeIngestRequest(req);
     if (unauthorized) {
       return unauthorized;
     }
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === "object" && !Array.isArray(e))
       .map((e) => ({
         eventId: typeof e.eventId === "string" ? e.eventId : undefined,
-        ts: typeof e.ts === "number" ? e.ts : Date.now(),
+        ts: typeof e.ts === "number" && Number.isFinite(e.ts) ? e.ts : Date.now(),
         category: typeof e.category === "string" ? e.category : "diagnostic",
         action: typeof e.action === "string" ? e.action : "event",
         severity: typeof e.severity === "string" ? e.severity : "info",

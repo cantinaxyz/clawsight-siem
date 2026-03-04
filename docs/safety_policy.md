@@ -45,12 +45,27 @@ At runtime, plugin hooks key lifecycle points:
 
 This gives both prevention points (pre-action) and evidence points (post-action).
 
+### 1.1) Credential Boundaries
+
+- Runtime/plugin calls (`/api/telemetry/ingest`, `/api/v1/guardrails/decide`) are authenticated with `SIEM_INGEST_TOKEN`.
+- Operator configuration and simulation APIs (`/api/safety/*`, `/api/intent/config`) require `SIEM_ADMIN_TOKEN`.
+- This separation prevents a compromised ingest credential from directly changing global safety posture.
+
 ### 2) Deterministic Safety Controls
 
 Deterministic controls are explicit and predictable:
 - command blocking (for example shell patterns and disallowed commands)
 - tool allow/deny controls
 - internet/domain/IP policies (allow/deny/warn behavior)
+- safety action toggles are enforced by generated rules: run-command default mode, download/install controls, and secret-access controls
+- the `writeFiles` safety toggle applies to filesystem write tools (`write`, `edit`, `apply_patch`) rather than only direct write calls
+- `allowHttpsOnly` is enforced as a static block on insecure `http://` targets across network-capable tools
+- domain/IP enforcement resolves mixed matches with strict precedence (`block > warn > allow`) to prevent allowlist-token bypasses from overriding blocked destinations
+- domain extraction normalizes IDNs to punycode (IDNA) so Unicode hostnames in scheme-less command strings still participate in domain policy enforcement
+- domain/IP extraction also normalizes common IOC obfuscations (`hxxp(s)://`, `[.]`, and `dot` token separators) before policy matching
+- prompt-injection `tool_call` hard enforcement in the production guardrail decision path
+- command execution guardrails are capability-scoped: `exec` rules also apply to execution-capable tool aliases (`exec`, `bash`, `gateway`)
+- for execution command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
 
 These controls provide hard boundaries independent of LLM interpretation.
 
@@ -80,5 +95,5 @@ Intent policy complements static controls:
 
 - Coverage is bounded by available lifecycle hooks and observable tool payloads.
 - Actions performed outside instrumented paths are not controllable by this policy layer.
-- Domain extraction and normalization can still miss edge-case URL/text patterns.
+- Domain extraction and normalization can still miss uncommon edge-case URL/text patterns.
 - Intent tuning requires calibration to each workload style (strict defaults can over-block exploratory tasks).

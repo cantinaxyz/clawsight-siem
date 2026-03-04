@@ -2,6 +2,8 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/intent/config/route.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { parseManagedAgentKey } from "@/lib/agents/identity";
+import { authorizeAdminRequest, resolveProjectScope } from "@/lib/auth";
 import { loadIntentPolicyConfig, saveIntentPolicyConfig, type IntentPolicyConfig } from "@/lib/intent-policy";
 
 type ScopeLevel = "global" | "agent";
@@ -21,9 +23,19 @@ function parseScopeLevel(value: unknown): ScopeLevel {
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
     const scopeLevel = parseScopeLevel(url.searchParams.get("scopeLevel"));
     const managedAgentKey = url.searchParams.get("managedAgentKey");
+    const requestedProjectId = parseManagedAgentKey(managedAgentKey)?.projectId;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
+    if (scope.projectId && scopeLevel === "global") {
+      return NextResponse.json({ error: "Forbidden: global scope unavailable for project token" }, { status: 403 });
+    }
+
     const config = await loadIntentPolicyConfig({
       scopeLevel,
       managedAgentKey,
@@ -40,9 +52,19 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const body = (await request.json()) as ConfigBody;
     const scopeLevel = parseScopeLevel(body.scopeLevel);
     const managedAgentKey = typeof body.managedAgentKey === "string" ? body.managedAgentKey : null;
+    const requestedProjectId = parseManagedAgentKey(managedAgentKey)?.projectId;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
+    if (scope.projectId && scopeLevel === "global") {
+      return NextResponse.json({ error: "Forbidden: global scope unavailable for project token" }, { status: 403 });
+    }
+
     const config = await saveIntentPolicyConfig(body.config || {}, {
       scopeLevel,
       managedAgentKey,

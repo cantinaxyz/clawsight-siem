@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 
 const TOOL_PRESETS = ["web_search", "web_fetch", "read", "write", "exec", "message", "cron"];
 const CHANNEL_PRESETS = ["discord", "telegram", "slack", "whatsapp", "webchat", "high-risk"];
@@ -87,6 +88,7 @@ export default async function PolicyRuleEditorPage({
 
   async function updateRuleAction(formData: FormData) {
     "use server";
+    await requireAdminServerActionAuth();
     const priority = parsePriority(text(formData, "priority"));
     const enabled = formData.get("enabled") === "on";
     const scopeRaw = text(formData, "scope");
@@ -127,6 +129,7 @@ export default async function PolicyRuleEditorPage({
 
   async function deleteRuleAction() {
     "use server";
+    await requireAdminServerActionAuth();
     await prisma.policyRule.delete({
       where: { id: ruleId },
     });

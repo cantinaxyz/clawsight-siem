@@ -2,7 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/safety/simulate/route.ts.
  */
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { evaluateMessageDecision, evaluateToolDecision } from "@/lib/policy";
 import { buildToolInspectionContent, evaluatePromptInjectionGuard } from "@/lib/prompt-injection";
 
@@ -23,7 +23,7 @@ type Body = {
  */
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeAdminRequest(req);
     if (unauthorized) return unauthorized;
 
     const body = (await req.json()) as Body;

@@ -45,7 +45,7 @@ Core capabilities:
 - Ingest normalized telemetry from OpenClaw-integrated plugins.
 - Correlate events into execution chains (`Trace` + `TraceSpan` compatibility model).
 - Persist unmatched telemetry separately (`TraceOrphan`) for audit integrity.
-- Preserve payload evidence (`payload` and `payloadRedacted`) for investigation.
+- Preserve payload evidence server-side while exposing redacted payloads in read APIs.
 - Power live operator views across Dashboard, Events, Executions, Alerts, Agents, and Safety.
 
 ## Architecture diagram
@@ -108,7 +108,9 @@ flowchart LR
 
 ```bash
 cp .env.example .env
-echo 'SIEM_API_TOKEN=devtoken' >> .env
+# edit .env and set a strong POSTGRES_PASSWORD before starting
+echo 'SIEM_INGEST_TOKEN=dev-ingest-token' >> .env
+echo 'SIEM_ADMIN_TOKEN=dev-admin-token' >> .env
 docker compose up --build
 ```
 
@@ -126,11 +128,34 @@ pnpm dev
 
 ## Required configuration
 
-Set ingest token (recommended outside local-only testing):
+Set split tokens (recommended):
 
 ```bash
-echo 'siem_API_TOKEN=devtoken' >> .env
+echo 'SIEM_INGEST_TOKEN=dev-ingest-token' >> .env
+echo 'SIEM_ADMIN_TOKEN=dev-admin-token' >> .env
 ```
+
+Optional multi-project read scoping:
+
+```bash
+echo 'SIEM_PROJECT_TOKENS=default:tenant-default-token,project-a:tenant-a-token' >> .env
+```
+
+Notes:
+- `SIEM_INGEST_TOKEN`: accepted by plugin-facing endpoints (`/api/telemetry/ingest`, `/v1/guardrails/decide`).
+- `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
+- `SIEM_ADMIN_TOKEN`: also required for control-plane server actions in the policy editor (`/policies`, `/policies/:id`) that create/update/delete global rules.
+- `SIEM_ADMIN_TOKEN`: also required for prompt-injection policy server actions (`/policies/prompt-injection`) that create/update/delete rules and model settings.
+- `SIEM_ADMIN_TOKEN`: also required for alert-triage server actions on `/alerts` and `/alerts/:id` (ack, unack, resolve, false-positive classification updates).
+- `SIEM_ADMIN_TOKEN`: also required for safety-page server actions on `/safety` (actions/internet configuration updates).
+- `SIEM_ADMIN_TOKEN`: also required for agent-detail server actions on `/agents/:agentKey` (profile edits, scoped-rule create/delete, and hard delete).
+- App Router UI rendering is admin-gated; operator page requests must carry a valid admin bearer token (commonly enforced/injected by your reverse proxy access layer).
+- Authenticated read APIs (including telemetry, traces, executions, agents, and alerts) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
+- Execution risk aggregation and execution-v2 incident dedupe are namespaced by project scope to prevent cross-project collision/contamination in shared-database deployments.
+- `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
+- `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
+- Client telemetry timestamps are bounded at ingest to reduce forged timeline skew (`SIEM_EVENT_TS_MAX_PAST_SKEW_MS`, default 24h; `SIEM_EVENT_TS_MAX_FUTURE_SKEW_MS`, default 5m).
+- Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
 
 For intent-policy LLM extraction/alignment checks (and optional inbound prompt-injection classification):
 
@@ -144,7 +169,7 @@ echo 'OPENAI_API_KEY=sk-...' >> .env
 npx -y @cantinasecurity/clawsight install \
   --mode enforce \
   --platform-url http://127.0.0.1:3000 \
-  --token devtoken \
+  --token dev-ingest-token \
   --agent-name openclaw-lab-prod \
   --link
 ```

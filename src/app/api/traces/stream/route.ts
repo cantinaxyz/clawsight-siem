@@ -4,6 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { buildManagedAgentSqlCondition } from "@/lib/agents/filter";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parseTraceFiltersFromUrl,
@@ -27,11 +28,13 @@ function parseUnsignedInt(value: string | null): number | undefined {
 function parseRequest(request: NextRequest) {
   const url = new URL(request.url);
   const filters = parseTraceFiltersFromUrl(url);
+  const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
   const cursorTs = parseUnsignedInt(url.searchParams.get("cursorTs"));
   const cursorTraceId = url.searchParams.get("cursorTraceId")?.trim() || undefined;
   const hasCursor = cursorTs !== undefined || cursorTraceId !== undefined;
   return {
     filters,
+    requestedProjectId,
     cursorTs: hasCursor ? cursorTs : Date.now(),
     cursorTraceId,
   };
@@ -41,7 +44,10 @@ function encodeEvent(name: string, data: unknown) {
   return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-function buildFilterSql(filters: ReturnType<typeof parseTraceFiltersFromUrl>): Prisma.Sql {
+function buildFilterSql(
+  filters: ReturnType<typeof parseTraceFiltersFromUrl>,
+  projectId?: string,
+): Prisma.Sql {
   const conditions: Prisma.Sql[] = [];
   if (filters.sourceType) {
     conditions.push(Prisma.sql`"sourceType" = ${filters.sourceType}`);
@@ -91,6 +97,9 @@ function buildFilterSql(filters: ReturnType<typeof parseTraceFiltersFromUrl>): P
         )`,
       );
   }
+  if (projectId) {
+    conditions.push(buildProjectSqlCondition(Prisma.sql`"projectId"`, projectId));
+  }
   if (conditions.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(conditions, " AND ")}`;
 }
@@ -99,10 +108,15 @@ function buildFilterSql(filters: ReturnType<typeof parseTraceFiltersFromUrl>): P
  * Streams trace deltas over SSE using `updatedAt + traceId` cursor ordering.
  */
 export async function GET(request: NextRequest) {
-  const { filters, cursorTs, cursorTraceId } = parseRequest(request);
+  const unauthorized = authorizeReadRequest(request);
+  if (unauthorized) return unauthorized;
+
+  const { filters, requestedProjectId, cursorTs, cursorTraceId } = parseRequest(request);
+  const scope = resolveProjectScope(request, requestedProjectId);
+  if (scope.response) return scope.response;
   const encoder = new TextEncoder();
   const pollTake = Math.min(filters.limit, POLL_BATCH);
-  const filterSql = buildFilterSql(filters);
+  const filterSql = buildFilterSql(filters, scope.projectId);
 
   const stream = new ReadableStream({
     start(controller) {

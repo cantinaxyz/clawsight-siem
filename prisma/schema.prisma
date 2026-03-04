@@ -212,7 +212,7 @@ model ExecutionRiskState {
   id               Int      @id @default(autoincrement())
   executionId      String
   rootExecutionId  String?
-  projectId        String?
+  projectId        String   @default("default")
   agentInstanceId  String?
   openclawAgentId  String?
   triggerType      String?
@@ -234,8 +234,9 @@ model ExecutionRiskState {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  @@unique([executionId, category])
+  @@unique([projectId, executionId, category])
   @@index([rootExecutionId, lastSignalAt(sort: Desc)])
+  @@index([projectId, lastSignalAt(sort: Desc)])
   @@index([agentInstanceId, lastSignalAt(sort: Desc)])
   @@index([status, lastSignalAt(sort: Desc)])
   @@index([category, lastSignalAt(sort: Desc)])

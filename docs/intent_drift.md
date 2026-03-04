@@ -37,9 +37,13 @@ intent_baseline (once per execution)
 1. `intent_baseline`:
    - Triggered at first `llm_input`.
    - Produces expected scopes/domains and a task boundary summary.
+   - Uses system prompt + current user task only for boundary expansion; recent history/tool output context is excluded to reduce baseline poisoning risk.
 2. `intent_action`:
    - Triggered before each tool call.
    - Scores alignment drift using signal weights and thresholds.
+   - For `exec`-style tools, infers network scope from command indicators (for example ssh/scp/rsync/git/nc/url/ip/runtime socket usage), not just curl/wget.
+   - LLM alignment treats tool params as untrusted data; relief is never applied in enforce mode, and instruction-like payloads in params increase scrutiny instead of reducing drift.
+   - In enforce mode, ambiguous-band alignment checks honor `failMode`: `fail_closed` blocks when alignment is unavailable, while `fail_open` continues deterministic scoring and records an `llm.alignment.unavailable` signal.
    - Returns enforcement decision.
 3. `intent_output`:
    - Triggered after each tool call.
@@ -49,6 +53,7 @@ intent_baseline (once per execution)
 ### 3) Drift Score and Modes
 
 - Drift accumulates per execution.
+- Execution intent state is namespaced by project + agent + root execution id to avoid cross-project baseline collisions.
 - Thresholds define warning and blocking transitions.
 - Mode behavior:
   - `off`: no drift checks.
@@ -67,6 +72,7 @@ ClawSight addresses both direct and indirect vectors:
 - Strictness, thresholds, and mode at safety intent UI.
 - Signal weight and mapping controls for domain classes/tool scopes/local-resource rules.
 - Per-agent overrides when one agent needs different tolerance than global default.
+- Execution decision details include scope-contribution evidence and exec network inference indicators for auditability.
 
 ## Current Limitations
 
@@ -75,4 +81,3 @@ ClawSight addresses both direct and indirect vectors:
 - Local file strings can be misread as domains without strong local-resource rules.
 - Aggressive default weights can cause false positives for valid exploratory workflows.
 - LLM-assisted alignment quality depends on model selection, latency budget, and token budget.
-

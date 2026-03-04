@@ -22,6 +22,7 @@ import {
   type InternetDefaultAction,
   type InternetWarnBehavior,
 } from "@/lib/internet-policy";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 import { cn } from "@/lib/utils";
 
 type TabId = "actions" | "internet" | "intent";
@@ -116,12 +117,13 @@ function parseInternetRulesJson(value: string): unknown[] {
 
 async function saveActionsAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const tab = parseTab(String(formData.get("tab") || "actions"));
   const cfg = await loadSafetyConfig();
   const next: SafetyConfig = {
     ...cfg,
     actions: {
-      runCommands: "allow",
+      runCommands: parseTernary(String(formData.get("runCommands") || cfg.actions.runCommands)),
       allowedCommands: parseCsvInput(String(formData.get("allowedCommands") || "")),
       warnedCommands: parseCsvInput(String(formData.get("warnedCommands") || "")),
       blockedCommands: parseCsvInput(String(formData.get("blockedCommands") || "")),
@@ -142,6 +144,7 @@ async function saveActionsAction(formData: FormData) {
 
 async function saveInternetAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const tab = parseTab(String(formData.get("tab") || "internet"));
   const cfg = await loadSafetyConfig();
   const rulesRaw = parseInternetRulesJson(String(formData.get("internetRulesJson") || "[]"));
@@ -231,11 +234,18 @@ export default async function SafetyPage({
             </p>
 
             <div className="rounded-lg border border-border bg-card">
-              <div className="px-4 py-3">
-                <h3 className="text-sm font-medium text-foreground">Run commands</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  List-based control. Unmatched commands are allowed by default.
-                </p>
+              <div className="flex flex-col justify-between gap-3 px-4 py-3 md:flex-row md:items-center">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-foreground">Run commands</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {cfg.actions.runCommands === "block"
+                      ? "List-based control. Unmatched commands are blocked by default."
+                      : cfg.actions.runCommands === "warn"
+                        ? "List-based control. Unmatched commands are warned by default."
+                        : "List-based control. Unmatched commands are allowed by default."}
+                  </p>
+                </div>
+                {renderModeSegment("runCommands", cfg.actions.runCommands)}
               </div>
               <div className="border-t border-border p-4">
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">

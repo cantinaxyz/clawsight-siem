@@ -25,6 +25,32 @@ export type DiscoverAgentInput = AgentIdentityInput & {
 };
 
 /**
+ * Maps a canonical managed-agent key to the single authoritative identity column.
+ *
+ * This prevents mixed identity signals from contaminating other identity fields on
+ * a managed-agent row (for example `inst:*` keys storing unrelated `openclawAgentId`).
+ */
+function canonicalIdentityColumnsFromKey(agentKey: string): {
+  agentInstanceId: string | null;
+  openclawSessionId: string | null;
+  openclawAgentId: string | null;
+} {
+  const parsed = parseManagedAgentKey(agentKey);
+  if (!parsed) {
+    return {
+      agentInstanceId: null,
+      openclawSessionId: null,
+      openclawAgentId: null,
+    };
+  }
+  return {
+    agentInstanceId: parsed.kind === "inst" ? parsed.value : null,
+    openclawSessionId: parsed.kind === "sid" ? parsed.value : null,
+    openclawAgentId: parsed.kind === "oc" ? parsed.value : null,
+  };
+}
+
+/**
  * Upserts discovered agent identities and keeps first/last seen timestamps monotonic.
  *
  * @param inputs Raw discovery signals from telemetry/trace pipelines.
@@ -36,6 +62,7 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
   const normalized = inputs
     .map((item) => {
       const key = deriveManagedAgentKey(item);
+      const canonicalIdentity = canonicalIdentityColumnsFromKey(key);
       const label = deriveManagedAgentLabel(item);
       return {
         key,
@@ -46,9 +73,9 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
         runtimeMeta: item.runtimeMeta ?? null,
         bootstrapAt: item.bootstrapAt ?? null,
         projectId: item.projectId?.trim() || null,
-        agentInstanceId: item.agentInstanceId?.trim() || null,
-        openclawSessionId: item.openclawSessionId?.trim() || null,
-        openclawAgentId: item.openclawAgentId?.trim() || null,
+        agentInstanceId: canonicalIdentity.agentInstanceId,
+        openclawSessionId: canonicalIdentity.openclawSessionId,
+        openclawAgentId: canonicalIdentity.openclawAgentId,
       };
     })
     .sort((a, b) => a.seenAt.getTime() - b.seenAt.getTime());
@@ -73,9 +100,9 @@ export async function upsertDiscoveredAgents(inputs: DiscoverAgentInput[]): Prom
       },
       update: {
         projectId: item.projectId || undefined,
-        agentInstanceId: item.agentInstanceId || undefined,
-        openclawSessionId: item.openclawSessionId || undefined,
-        openclawAgentId: item.openclawAgentId || undefined,
+        agentInstanceId: item.agentInstanceId,
+        openclawSessionId: item.openclawSessionId,
+        openclawAgentId: item.openclawAgentId,
         reportedName: item.reportedName || undefined,
         runtimeMeta: item.runtimeMeta || undefined,
         sourceType: item.sourceType === "bootstrap" ? "bootstrap" : undefined,
@@ -184,6 +211,20 @@ function projectScopeSql(projectColumn: Prisma.Sql, projectId: string): Prisma.S
 }
 
 /**
+ * Builds Prisma project scoping for ExecutionIntent rows.
+ *
+ * ExecutionIntent treats `null`/empty project ids as `default` for backward compatibility.
+ */
+function executionIntentProjectWhere(projectId: string): Prisma.ExecutionIntentWhereInput {
+  if (projectId === "default") {
+    return {
+      OR: [{ projectId: null }, { projectId: "" }, { projectId: "default" }],
+    };
+  }
+  return { projectId };
+}
+
+/**
  * Builds a SQL predicate for matching agent-scoped identities across heterogeneous tables.
  *
  * The resulting predicate is used for hard-delete cleanup where each table can expose a
@@ -229,6 +270,83 @@ function buildScopedSqlCondition(input: {
 }
 
 /**
+ * Builds an identity-only SQL predicate (no project scope) for optional identity columns.
+ */
+function buildIdentitySqlPredicate(input: {
+  agentInstanceIds: string[];
+  openclawAgentIds: string[];
+  openclawSessionIds: string[];
+  openclawSessionKeys: string[];
+  agentInstanceColumn?: Prisma.Sql;
+  openclawAgentColumn?: Prisma.Sql;
+  openclawSessionIdColumn?: Prisma.Sql;
+  openclawSessionKeyColumn?: Prisma.Sql;
+}): Prisma.Sql | null {
+  const identityPredicates: Prisma.Sql[] = [];
+  if (input.agentInstanceColumn) {
+    for (const value of input.agentInstanceIds) {
+      identityPredicates.push(Prisma.sql`${input.agentInstanceColumn} = ${value}`);
+    }
+  }
+  if (input.openclawAgentColumn) {
+    for (const value of input.openclawAgentIds) {
+      identityPredicates.push(Prisma.sql`${input.openclawAgentColumn} = ${value}`);
+    }
+  }
+  if (input.openclawSessionIdColumn) {
+    for (const value of input.openclawSessionIds) {
+      identityPredicates.push(Prisma.sql`${input.openclawSessionIdColumn} = ${value}`);
+    }
+  }
+  if (input.openclawSessionKeyColumn) {
+    for (const value of input.openclawSessionKeys) {
+      identityPredicates.push(Prisma.sql`${input.openclawSessionKeyColumn} = ${value}`);
+    }
+  }
+  if (identityPredicates.length === 0) return null;
+  return Prisma.sql`(${Prisma.join(identityPredicates, " OR ")})`;
+}
+
+/**
+ * Builds deletion scope from the canonical managed-agent key only.
+ *
+ * This is intentionally strict: destructive cleanup must be anchored to the key's
+ * authoritative identity tuple and never widened by mutable/untrusted identity hints.
+ */
+function buildDeletionIdentityScope(input: {
+  agentKey: string;
+  managedAgentProjectId?: string | null;
+}): {
+  projectId: string;
+  agentInstanceIds: string[];
+  openclawAgentIds: string[];
+  openclawSessionIds: string[];
+  openclawSessionKeys: string[];
+} {
+  const parsed = parseManagedAgentKey(input.agentKey);
+  const fallbackProjectId = parsed?.projectId || "default";
+  const rowProjectId = String(input.managedAgentProjectId || "").trim();
+  const projectId = rowProjectId || fallbackProjectId;
+  if (!parsed) {
+    return {
+      projectId,
+      agentInstanceIds: [],
+      openclawAgentIds: [],
+      openclawSessionIds: [],
+      openclawSessionKeys: [],
+    };
+  }
+
+  return {
+    projectId,
+    agentInstanceIds: parsed.kind === "inst" ? [parsed.value] : [],
+    openclawAgentIds: parsed.kind === "oc" ? [parsed.value] : [],
+    openclawSessionIds: parsed.kind === "sid" ? [parsed.value] : [],
+    openclawSessionKeys: parsed.kind === "sess" ? [parsed.value] : [],
+  };
+}
+
+/**
  * Permanently deletes a managed agent and all agent-scoped artifacts.
  *
  * This is the destructive cleanup entrypoint used by Agent Settings. It removes:
@@ -249,20 +367,10 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
   });
   if (!managedAgent) return;
 
-  const parsed = parseManagedAgentKey(normalizedKey);
-  const projectId = parsed?.projectId || String(managedAgent.projectId || "").trim() || "default";
-  const scopedInstanceId = parsed?.kind === "inst" ? parsed.value : null;
-  const scopedOpenclawAgentId = parsed?.kind === "oc" ? parsed.value : null;
-  const scopedSessionId = parsed?.kind === "sid" ? parsed.value : null;
-  const scopedSessionKey = parsed?.kind === "sess" ? parsed.value : null;
-
-  const identity = {
-    projectId,
-    agentInstanceIds: nonEmpty([managedAgent.agentInstanceId, scopedInstanceId]),
-    openclawAgentIds: nonEmpty([managedAgent.openclawAgentId, scopedOpenclawAgentId]),
-    openclawSessionIds: nonEmpty([managedAgent.openclawSessionId, scopedSessionId]),
-    openclawSessionKeys: nonEmpty([scopedSessionKey]),
-  };
+  const identity = buildDeletionIdentityScope({
+    agentKey: normalizedKey,
+    managedAgentProjectId: managedAgent.projectId,
+  });
 
   await prisma.$transaction(async (tx) => {
     const traceCondition = buildScopedSqlCondition({
@@ -285,19 +393,29 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
     const traceIds = nonEmpty(traceRows.map((row) => row.traceId));
     const rootExecutionIds = nonEmpty(traceRows.map((row) => row.rootExecutionId));
 
+    const executionIntentIdentityClauses: Prisma.ExecutionIntentWhereInput[] = [
+      { managedAgentKey: normalizedKey },
+      identity.agentInstanceIds.length > 0
+        ? { agentInstanceId: { in: identity.agentInstanceIds } }
+        : undefined,
+      identity.openclawSessionKeys.length > 0
+        ? { sessionKey: { in: identity.openclawSessionKeys } }
+        : undefined,
+    ].filter(Boolean) as Prisma.ExecutionIntentWhereInput[];
+
     const executionIntentWhere: Prisma.ExecutionIntentWhereInput = {
-      OR: [
-        { managedAgentKey: normalizedKey },
-        identity.agentInstanceIds.length > 0 ? { agentInstanceId: { in: identity.agentInstanceIds } } : undefined,
-        rootExecutionIds.length > 0 ? { rootExecutionId: { in: rootExecutionIds } } : undefined,
-      ].filter(Boolean) as Prisma.ExecutionIntentWhereInput[],
+      AND: [
+        executionIntentProjectWhere(identity.projectId),
+        { OR: executionIntentIdentityClauses },
+      ],
     };
 
     const executionIntents = await tx.executionIntent.findMany({
       where: executionIntentWhere,
-      select: { executionKey: true, rootExecutionId: true },
+      select: { id: true, executionKey: true, rootExecutionId: true },
     });
 
+    const executionIntentIds = executionIntents.map((row) => row.id);
     const executionKeys = nonEmpty(executionIntents.map((row) => row.executionKey));
     for (const value of executionIntents.map((row) => row.rootExecutionId)) {
       if (value && !rootExecutionIds.includes(value)) rootExecutionIds.push(value);
@@ -305,14 +423,13 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
 
     if (traceIds.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0) {
       const alertPredicates: Prisma.Sql[] = [];
-      const alertCondition = buildScopedSqlCondition({
+      const alertIdentityPredicate = buildIdentitySqlPredicate({
         ...identity,
-        projectColumn: Prisma.sql`"projectId"`,
         agentInstanceColumn: Prisma.sql`"agentInstanceId"`,
         openclawAgentColumn: Prisma.sql`"openclawAgentId"`,
         openclawSessionKeyColumn: Prisma.sql`"openclawSessionKey"`,
       });
-      if (alertCondition) alertPredicates.push(alertCondition);
+      if (alertIdentityPredicate) alertPredicates.push(alertIdentityPredicate);
       if (traceIds.length > 0) {
         const traceIdSql = Prisma.join(traceIds.map((value) => Prisma.sql`${value}`));
         alertPredicates.push(Prisma.sql`"executionId" IN (${traceIdSql})`);
@@ -324,20 +441,20 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       if (alertPredicates.length > 0) {
         await tx.$executeRaw(Prisma.sql`
           DELETE FROM "ThreatAlert"
-          WHERE ${Prisma.join(alertPredicates, " OR ")}
+          WHERE ${projectScopeSql(Prisma.sql`"projectId"`, identity.projectId)}
+            AND (${Prisma.join(alertPredicates, " OR ")})
         `);
       }
     }
 
     if (traceIds.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0 || identity.openclawAgentIds.length > 0) {
       const riskPredicates: Prisma.Sql[] = [];
-      const riskCondition = buildScopedSqlCondition({
+      const riskIdentityPredicate = buildIdentitySqlPredicate({
         ...identity,
-        projectColumn: Prisma.sql`"projectId"`,
         agentInstanceColumn: Prisma.sql`"agentInstanceId"`,
         openclawAgentColumn: Prisma.sql`"openclawAgentId"`,
       });
-      if (riskCondition) riskPredicates.push(riskCondition);
+      if (riskIdentityPredicate) riskPredicates.push(riskIdentityPredicate);
       if (traceIds.length > 0) {
         const traceIdSql = Prisma.join(traceIds.map((value) => Prisma.sql`${value}`));
         riskPredicates.push(Prisma.sql`"executionId" IN (${traceIdSql})`);
@@ -349,26 +466,22 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       if (riskPredicates.length > 0) {
         await tx.$executeRaw(Prisma.sql`
           DELETE FROM "ExecutionRiskState"
-          WHERE ${Prisma.join(riskPredicates, " OR ")}
+          WHERE ${projectScopeSql(Prisma.sql`"projectId"`, identity.projectId)}
+            AND (${Prisma.join(riskPredicates, " OR ")})
         `);
       }
     }
 
-    if (executionKeys.length > 0 || rootExecutionIds.length > 0 || identity.agentInstanceIds.length > 0) {
-      const decisionWhere: Prisma.IntentDecisionWhereInput = {
-        OR: [
-          executionKeys.length > 0 ? { executionKey: { in: executionKeys } } : undefined,
-          rootExecutionIds.length > 0 ? { rootExecutionId: { in: rootExecutionIds } } : undefined,
-          identity.agentInstanceIds.length > 0 ? { agentInstanceId: { in: identity.agentInstanceIds } } : undefined,
-        ].filter(Boolean) as Prisma.IntentDecisionWhereInput[],
-      };
-      if ((decisionWhere.OR || []).length > 0) {
-        await tx.intentDecision.deleteMany({ where: decisionWhere });
-      }
+    if (executionKeys.length > 0) {
+      await tx.intentDecision.deleteMany({
+        where: { executionKey: { in: executionKeys } },
+      });
     }
 
-    if ((executionIntentWhere.OR || []).length > 0) {
-      await tx.executionIntent.deleteMany({ where: executionIntentWhere });
+    if (executionIntentIds.length > 0) {
+      await tx.executionIntent.deleteMany({
+        where: { id: { in: executionIntentIds } },
+      });
     }
 
     const traceDeleteCondition = buildScopedSqlCondition({
@@ -401,12 +514,8 @@ export async function deleteManagedAgentAndData(agentKey: string): Promise<void>
       `);
     }
 
-    if (rootExecutionIds.length > 0 || identity.openclawSessionKeys.length > 0) {
+    if (identity.openclawSessionKeys.length > 0) {
       const orphanPredicates: Prisma.Sql[] = [];
-      if (rootExecutionIds.length > 0) {
-        const rootExecutionSql = Prisma.join(rootExecutionIds.map((value) => Prisma.sql`${value}`));
-        orphanPredicates.push(Prisma.sql`"rootExecutionId" IN (${rootExecutionSql})`);
-      }
       if (identity.openclawSessionKeys.length > 0) {
         const sessionKeySql = Prisma.join(identity.openclawSessionKeys.map((value) => Prisma.sql`${value}`));
         orphanPredicates.push(Prisma.sql`"openclawSessionKey" IN (${sessionKeySql})`);

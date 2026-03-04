@@ -2,11 +2,11 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/v1/payments/send/route.ts.
  */
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeIngestRequest } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const unauthorized = authorizeRequest(req);
+    const unauthorized = authorizeIngestRequest(req);
     if (unauthorized) {
       return unauthorized;
     }

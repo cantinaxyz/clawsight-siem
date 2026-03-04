@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parsePositiveInt,
@@ -35,13 +36,20 @@ export async function GET(
   context: { params: ParamsInput | Promise<ParamsInput> },
 ) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
+    const url = new URL(request.url);
+    const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
+
     const { traceId } = await resolveParams(context.params);
     const decodedTraceId = decodeURIComponent(String(traceId || "").trim());
     if (!decodedTraceId) {
       return NextResponse.json({ error: "traceId required" }, { status: 400 });
     }
 
-    const url = new URL(request.url);
     const limit = parsePositiveInt(url.searchParams.get("limit"), 300, 1200);
     const cursorTs = parseUnsignedInt(url.searchParams.get("cursorTs"));
     const cursorId = parseUnsignedInt(url.searchParams.get("cursorId"));
@@ -84,13 +92,22 @@ export async function GET(
         s."openclawAgentId",
         s."riskScore",
         s."payloadSummary",
-        e."payload" AS "payload",
+        e."payloadRedacted" AS "payload",
         e."payloadRedacted" AS "payloadRedacted",
         s."createdAt",
         s."updatedAt"
       FROM "TraceSpan" s
       LEFT JOIN "TelemetryEvent" e ON e."eventId" = s."eventExternalId"
       WHERE s."traceId" = ${decodedTraceId}
+      ${
+        scope.projectId
+          ? Prisma.sql`AND s."traceId" IN (
+              SELECT "traceId" FROM "Trace"
+              WHERE "traceId" = ${decodedTraceId}
+                AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}
+            )`
+          : Prisma.empty
+      }
       ${cursorClause}
       ORDER BY s."ts" ASC, s."id" ASC
       LIMIT ${limit}

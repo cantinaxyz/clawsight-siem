@@ -18,6 +18,7 @@ import {
   type AlertStatus,
 } from "@/lib/alerts/lifecycle";
 import { prisma } from "@/lib/prisma";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -405,6 +406,7 @@ function toStatusText(value?: string | null): string {
 
 async function bulkAlertTransitionAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
 
   const returnTo = parseReturnTo(formData);
   const nextStatusRaw = formData.get("nextStatus");
@@ -448,6 +450,7 @@ async function bulkAlertTransitionAction(formData: FormData) {
 
 async function resolveAlertAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
 
   const returnTo = parseReturnTo(formData);
   const idRaw = formData.get("id");

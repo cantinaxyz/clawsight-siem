@@ -3,6 +3,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { evaluateIntentAction, evaluateIntentBaseline, evaluateIntentOutput } from "@/lib/intent-policy";
 import { prisma } from "@/lib/prisma";
 
@@ -27,6 +28,9 @@ function parseToolParams(value: unknown): Record<string, unknown> {
 export async function POST(request: Request) {
   const rootExecutionId = `sim:${randomUUID()}`;
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
     const body = (await request.json()) as Body;
     const task = String(body.task || "").trim();
     const toolName = String(body.toolName || "web_fetch").trim();

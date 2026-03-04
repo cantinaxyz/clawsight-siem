@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { prisma } from "@/lib/prisma";
 import { PROMPT_INJECTION_TEMPLATES } from "@/lib/prompt-injection";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 
 type PromptConfig = {
   id: number;
@@ -92,6 +93,7 @@ async function ensureConfig() {
 
 async function saveConfigAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   await ensureConfig();
   const llmEnabled = formData.get("llmEnabled") === "on";
   const model = text(formData, "model") || "gpt-4.1-mini";
@@ -111,6 +113,7 @@ async function saveConfigAction(formData: FormData) {
 
 async function createRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const name = text(formData, "name") || `prompt-rule-${Date.now()}`;
   const surface = text(formData, "surface") || "both";
   const action = text(formData, "action") || "alert";
@@ -135,6 +138,7 @@ async function createRuleAction(formData: FormData) {
 
 async function createTemplateAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const template = text(formData, "template");
   if (!template) return;
 
@@ -170,6 +174,7 @@ async function createTemplateAction(formData: FormData) {
 
 async function toggleRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const id = Number(text(formData, "id"));
   const enabled = text(formData, "enabled") === "true";
   if (!Number.isInteger(id) || id <= 0) return;
@@ -183,6 +188,7 @@ async function toggleRuleAction(formData: FormData) {
 
 async function deleteRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const id = Number(text(formData, "id"));
   if (!Number.isInteger(id) || id <= 0) return;
   await prisma.$executeRaw`DELETE FROM "PromptInjectionRule" WHERE "id" = ${id}`;

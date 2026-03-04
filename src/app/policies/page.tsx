@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { prisma } from "@/lib/prisma";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 
 type PolicyScope = "tool" | "message" | "domain" | "ip";
 type PolicyAction = "allow" | "block" | "modify";
@@ -103,6 +104,7 @@ function modifySummary(rule: PolicyRule): string {
 
 async function createRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const name = text(formData, "name");
   const scope = parseScope(text(formData, "scope"));
   const action = parseAction(text(formData, "action"));
@@ -145,6 +147,7 @@ async function createRuleAction(formData: FormData) {
 
 async function createQuickRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const template = text(formData, "template");
 
   const ensure = async (data: Prisma.PolicyRuleCreateInput) => {
@@ -220,6 +223,7 @@ async function createQuickRuleAction(formData: FormData) {
 
 async function toggleRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const id = Number(text(formData, "id"));
   if (!Number.isInteger(id) || id <= 0) return;
   const enabled = text(formData, "enabled") === "true";
@@ -233,6 +237,7 @@ async function toggleRuleAction(formData: FormData) {
 
 async function deleteRuleAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const id = Number(text(formData, "id"));
   if (!Number.isInteger(id) || id <= 0) return;
 

@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeAdminRequest, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   parsePositiveInt,
@@ -23,6 +24,18 @@ function isMissingTraceOrphanTableError(err: unknown): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
+
+    const scope = resolveProjectScope(request, undefined);
+    if (scope.response) return scope.response;
+    if (scope.projectId) {
+      return NextResponse.json(
+        { error: "Trace orphan feed is not project-scoped" },
+        { status: 403 },
+      );
+    }
+
     const url = new URL(request.url);
     const reason = url.searchParams.get("reason")?.trim() || "";
     const search = url.searchParams.get("search")?.trim() || url.searchParams.get("q")?.trim() || "";
@@ -65,7 +78,7 @@ export async function GET(request: NextRequest) {
           "rootExecutionId",
           "rootMessageId",
           "openclawSessionKey",
-          "payload",
+          NULL::jsonb AS "payload",
           "createdAt",
           "updatedAt"
         FROM "TraceOrphan"

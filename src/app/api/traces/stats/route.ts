@@ -3,6 +3,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeReadRequest, buildProjectSqlCondition, resolveProjectScope } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function parseNonNegativeInt(value: string | null, fallback: number): number {
@@ -14,27 +15,46 @@ function parseNonNegativeInt(value: string | null, fallback: number): number {
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = authorizeReadRequest(request);
+    if (unauthorized) return unauthorized;
+
     const url = new URL(request.url);
+    const requestedProjectId = url.searchParams.get("projectId")?.trim() || undefined;
+    const scope = resolveProjectScope(request, requestedProjectId);
+    if (scope.response) return scope.response;
     const sinceHours = parseNonNegativeInt(url.searchParams.get("sinceHours"), 24);
     const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+    const projectWhere = scope.projectId
+      ? Prisma.sql`AND ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}`
+      : Prisma.empty;
 
     const [statusRows, sourceRows, stageRows] = await Promise.all([
       prisma.$queryRaw<Array<{ status: string; hits: bigint }>>`
         SELECT "status", COUNT(*)::bigint AS "hits"
         FROM "Trace"
         WHERE "lastEventTs" >= ${since}
+        ${projectWhere}
         GROUP BY "status"
       `,
       prisma.$queryRaw<Array<{ sourceType: string; hits: bigint }>>`
         SELECT "sourceType", COUNT(*)::bigint AS "hits"
         FROM "Trace"
         WHERE "lastEventTs" >= ${since}
+        ${projectWhere}
         GROUP BY "sourceType"
       `,
       prisma.$queryRaw<Array<{ stage: string; hits: bigint }>>`
         SELECT "stage", COUNT(*)::bigint AS "hits"
         FROM "TraceSpan"
         WHERE "ts" >= ${since}
+          ${
+            scope.projectId
+              ? Prisma.sql`AND "traceId" IN (
+                  SELECT "traceId" FROM "Trace"
+                  WHERE ${buildProjectSqlCondition(Prisma.sql`"projectId"`, scope.projectId)}
+                )`
+              : Prisma.empty
+          }
           AND "status" IN ('error', 'block')
         GROUP BY "stage"
         ORDER BY COUNT(*) DESC
@@ -72,4 +92,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

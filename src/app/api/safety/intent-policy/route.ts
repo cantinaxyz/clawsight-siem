@@ -2,6 +2,7 @@
  * @fileoverview ClawSight SIEM module: platform/src/app/api/safety/intent-policy/route.ts.
  */
 import { NextResponse } from "next/server";
+import { authorizeAdminRequest } from "@/lib/auth";
 import { applySafetyConfig, loadSafetyConfig } from "@/lib/safety-config";
 
 type UiIntentPolicyConfig = {
@@ -214,8 +215,10 @@ function toIntentPolicyPatch(body: Partial<UiIntentPolicyConfig>, current: Await
 /**
  * Returns intent policy config projected into the v3 safety UI shape.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
     const config = await loadSafetyConfig();
     const llmKeyConfigured = Boolean(
       process.env.OPENAI_API_KEY ||
@@ -237,6 +240,8 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const unauthorized = authorizeAdminRequest(request);
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as Partial<UiIntentPolicyConfig>;
     const current = await loadSafetyConfig();
     const nextIntent = toIntentPolicyPatch(body, current.intentPolicy);

@@ -54,7 +54,7 @@ type RiskStateLike = {
 type Bucket = {
   executionId: string;
   rootExecutionId: string | null;
-  projectId: string | null;
+  projectId: string;
   agentInstanceId: string | null;
   openclawAgentId: string | null;
   openclawSessionKey: string | null;
@@ -86,6 +86,11 @@ const BREACH_RANK: Record<ExecutionBreachLevel, number> = {
 
 function toLower(value: string | null | undefined): string {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeProjectId(value: string | null | undefined): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized || "default";
 }
 
 function categoryRuleName(category: ExecutionAlertCategory): string {
@@ -214,8 +219,8 @@ function deriveRuleDescription(agg: Bucket): string {
   return parts.join(" · ");
 }
 
-function bucketKey(executionId: string, category: ExecutionAlertCategory): string {
-  return `${executionId}::${category}`;
+function bucketKey(projectId: string, executionId: string, category: ExecutionAlertCategory): string {
+  return `${projectId}::${executionId}::${category}`;
 }
 
 /**
@@ -228,7 +233,8 @@ function bucketKey(executionId: string, category: ExecutionAlertCategory): strin
 function toBucket(signals: ExecutionRiskSignal[]): Map<string, Bucket> {
   const out = new Map<string, Bucket>();
   for (const signal of signals) {
-    const key = bucketKey(signal.executionId, signal.category);
+    const projectId = normalizeProjectId(signal.projectId);
+    const key = bucketKey(projectId, signal.executionId, signal.category);
     const normalizedOutcome = normalizeOutcome(signal.eventOutcome);
     const drift = Number.isFinite(Number(signal.driftScore)) ? Number(signal.driftScore) : 0;
     const risk = Number.isFinite(Number(signal.riskScore)) ? Number(signal.riskScore) : 0;
@@ -237,7 +243,7 @@ function toBucket(signals: ExecutionRiskSignal[]): Map<string, Bucket> {
       const bucket: Bucket = {
         executionId: signal.executionId,
         rootExecutionId: signal.rootExecutionId || signal.executionId,
-        projectId: signal.projectId || null,
+        projectId,
         agentInstanceId: signal.agentInstanceId || null,
         openclawAgentId: signal.openclawAgentId || null,
         openclawSessionKey: signal.openclawSessionKey || null,
@@ -352,22 +358,36 @@ export async function buildExecutionRiskAlerts(
   if (!buckets.size) return [];
 
   const identityKeys = [...buckets.values()].map((bucket) => ({
+    projectId: bucket.projectId,
     executionId: bucket.executionId,
     category: bucket.category,
   }));
 
   const existingRows = await tx.executionRiskState.findMany({
-    where: { OR: identityKeys.map((item) => ({ executionId: item.executionId, category: item.category })) },
+    where: {
+      OR: identityKeys.map((item) => ({
+        projectId: item.projectId,
+        executionId: item.executionId,
+        category: item.category,
+      })),
+    },
   });
   const existingMap = new Map<string, (typeof existingRows)[number]>();
   for (const row of existingRows) {
-    existingMap.set(bucketKey(row.executionId, row.category as ExecutionAlertCategory), row);
+    existingMap.set(
+      bucketKey(
+        normalizeProjectId(row.projectId),
+        row.executionId,
+        row.category as ExecutionAlertCategory,
+      ),
+      row,
+    );
   }
 
   const alerts: Prisma.ThreatAlertCreateManyInput[] = [];
 
   for (const bucket of buckets.values()) {
-    const key = bucketKey(bucket.executionId, bucket.category);
+    const key = bucketKey(bucket.projectId, bucket.executionId, bucket.category);
     const prev = existingMap.get(key);
     const next = {
       driftScore: Math.max(Number(prev?.driftScore || 0), bucket.maxDrift),
@@ -384,7 +404,8 @@ export async function buildExecutionRiskAlerts(
 
     await tx.executionRiskState.upsert({
       where: {
-        executionId_category: {
+        projectId_executionId_category: {
+          projectId: bucket.projectId,
           executionId: bucket.executionId,
           category: bucket.category,
         },
@@ -414,7 +435,7 @@ export async function buildExecutionRiskAlerts(
       },
       update: {
         rootExecutionId: bucket.rootExecutionId || prev?.rootExecutionId || null,
-        projectId: bucket.projectId || prev?.projectId || null,
+        projectId: bucket.projectId,
         agentInstanceId: bucket.agentInstanceId || prev?.agentInstanceId || null,
         openclawAgentId: bucket.openclawAgentId || prev?.openclawAgentId || null,
         triggerType: bucket.triggerType || prev?.triggerType || null,
@@ -465,7 +486,7 @@ export async function buildExecutionRiskAlerts(
       breachTransition: prevBreach ? `${prevBreach}->${nextBreach}` : `none->${nextBreach}`,
     } as Prisma.InputJsonValue;
 
-    const incidentKey = `exec:${bucket.executionId}:${bucket.category}:${nextBreach}`;
+    const incidentKey = `exec:${bucket.projectId}:${bucket.executionId}:${bucket.category}:${nextBreach}`;
     const ruleName = categoryRuleName(bucket.category);
     const eventOutcome = deriveEventOutcome(bucket, nextBreach);
     alerts.push({
@@ -500,6 +521,7 @@ export async function buildExecutionRiskAlerts(
       breachLevel: nextBreach,
       rollup,
       details: {
+        projectId: bucket.projectId,
         executionId: bucket.executionId,
         rootExecutionId: bucket.rootExecutionId || bucket.executionId,
         executionCategory: bucket.category,
