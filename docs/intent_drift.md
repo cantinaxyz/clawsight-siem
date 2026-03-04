@@ -37,6 +37,7 @@ intent_baseline (once per execution)
 1. `intent_baseline`:
    - Triggered at first `llm_input`.
    - Produces expected scopes/domains and a task boundary summary.
+   - Uses system prompt + current user task only for boundary expansion; recent history/tool output context is excluded to reduce baseline poisoning risk.
 2. `intent_action`:
    - Triggered before each tool call.
    - Scores alignment drift using signal weights and thresholds.
