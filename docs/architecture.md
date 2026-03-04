@@ -108,6 +108,7 @@ flowchart LR
 
 - Correlation prefers strong execution identifiers (`rootExecutionId`, `traceId`, `rootMessageId`, run/session ids).
 - Lifecycle events are normalized into stages (user input, model prep, tool execution, response, completion).
+- Execution risk rollups and execution-v2 alert dedupe are keyed by `(projectId, executionId, category)` to preserve tenant isolation in shared-database deployments.
 - UI surfaces execution outcome separately from internal warning/error/block counters.
 
 ### 5) Auth and Tenancy Boundary

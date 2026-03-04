@@ -151,6 +151,7 @@ Notes:
 - `SIEM_ADMIN_TOKEN`: also required for agent-detail server actions on `/agents/:agentKey` (profile edits, scoped-rule create/delete, and hard delete).
 - App Router UI rendering is admin-gated; operator page requests must carry a valid admin bearer token (commonly enforced/injected by your reverse proxy access layer).
 - Authenticated read APIs (including telemetry, traces, executions, agents, and alerts) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
+- Execution risk aggregation and execution-v2 incident dedupe are namespaced by project scope to prevent cross-project collision/contamination in shared-database deployments.
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
 - `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
 - Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
