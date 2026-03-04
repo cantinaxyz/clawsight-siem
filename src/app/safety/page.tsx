@@ -22,6 +22,7 @@ import {
   type InternetDefaultAction,
   type InternetWarnBehavior,
 } from "@/lib/internet-policy";
+import { requireAdminServerActionAuth } from "@/lib/server-action-auth";
 import { cn } from "@/lib/utils";
 
 type TabId = "actions" | "internet" | "intent";
@@ -116,12 +117,13 @@ function parseInternetRulesJson(value: string): unknown[] {
 
 async function saveActionsAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const tab = parseTab(String(formData.get("tab") || "actions"));
   const cfg = await loadSafetyConfig();
   const next: SafetyConfig = {
     ...cfg,
     actions: {
-      runCommands: "allow",
+      runCommands: cfg.actions.runCommands,
       allowedCommands: parseCsvInput(String(formData.get("allowedCommands") || "")),
       warnedCommands: parseCsvInput(String(formData.get("warnedCommands") || "")),
       blockedCommands: parseCsvInput(String(formData.get("blockedCommands") || "")),
@@ -142,6 +144,7 @@ async function saveActionsAction(formData: FormData) {
 
 async function saveInternetAction(formData: FormData) {
   "use server";
+  await requireAdminServerActionAuth();
   const tab = parseTab(String(formData.get("tab") || "internet"));
   const cfg = await loadSafetyConfig();
   const rulesRaw = parseInternetRulesJson(String(formData.get("internetRulesJson") || "[]"));
