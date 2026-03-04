@@ -61,6 +61,7 @@ Deterministic controls are explicit and predictable:
 - `allowHttpsOnly` is enforced as a static block on insecure `http://` targets across network-capable tools
 - domain/IP enforcement resolves mixed matches with strict precedence (`block > warn > allow`) to prevent allowlist-token bypasses from overriding blocked destinations
 - domain extraction normalizes IDNs to punycode (IDNA) so Unicode hostnames in scheme-less command strings still participate in domain policy enforcement
+- domain/IP extraction also normalizes common IOC obfuscations (`hxxp(s)://`, `[.]`, and `dot` token separators) before policy matching
 - prompt-injection `tool_call` hard enforcement in the production guardrail decision path
 - command execution guardrails are capability-scoped: `exec` rules also apply to execution-capable tool aliases (`exec`, `bash`, `gateway`)
 - for execution command rules, allow-matching is executable-token based (not raw substring), and matching block rules are evaluated before allow rules
@@ -93,5 +94,5 @@ Intent policy complements static controls:
 
 - Coverage is bounded by available lifecycle hooks and observable tool payloads.
 - Actions performed outside instrumented paths are not controllable by this policy layer.
-- Domain extraction and normalization can still miss edge-case URL/text patterns.
+- Domain extraction and normalization can still miss uncommon edge-case URL/text patterns.
 - Intent tuning requires calibration to each workload style (strict defaults can over-block exploratory tasks).

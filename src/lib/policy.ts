@@ -371,8 +371,32 @@ function addIpCandidate(value: string, store: Set<string>) {
   store.add(ip);
 }
 
+function normalizeObfuscatedTargets(input: string): string {
+  let normalized = input;
+  normalized = normalized.replace(/\bhxxp(s?)\s*:\s*\/\//gi, (_full, secure: string) =>
+    `http${secure ? "s" : ""}://`);
+  normalized = normalized
+    .replace(/\[\s*\.\s*]/g, ".")
+    .replace(/\(\s*\.\s*\)/g, ".")
+    .replace(/\{\s*\.\s*\}/g, ".");
+
+  // Decode common IOC notation like "example dot com" or "example[dot]com".
+  const dotTokenRe =
+    /([a-z0-9-]{2,63})\s*(?:\[\s*dot\s*]|\(\s*dot\s*\)|\{\s*dot\s*}|\s+dot\s+)\s*([a-z0-9-]{2,63})/gi;
+  let prev = normalized;
+  for (let i = 0; i < 5; i += 1) {
+    const next = prev.replace(dotTokenRe, "$1.$2");
+    if (next === prev) break;
+    prev = next;
+  }
+  normalized = prev;
+  return normalized;
+}
+
 function collectTargetsFromString(input: string, domainStore: Set<string>, ipStore: Set<string>) {
-  for (const url of input.match(URL_RE) ?? []) {
+  const normalizedInput = normalizeObfuscatedTargets(input);
+
+  for (const url of normalizedInput.match(URL_RE) ?? []) {
     try {
       const parsed = new URL(url);
       if (parsed.hostname) {
@@ -393,13 +417,13 @@ function collectTargetsFromString(input: string, domainStore: Set<string>, ipSto
       // Ignore malformed URL.
     }
   }
-  for (const domain of input.match(DOMAIN_RE) ?? []) {
+  for (const domain of normalizedInput.match(DOMAIN_RE) ?? []) {
     domainStore.add(normalizeDomain(domain));
   }
-  for (const ip of input.match(IPV4_RE) ?? []) {
+  for (const ip of normalizedInput.match(IPV4_RE) ?? []) {
     addIpCandidate(ip, ipStore);
   }
-  for (const ip of input.match(IPV6_RE) ?? []) {
+  for (const ip of normalizedInput.match(IPV6_RE) ?? []) {
     addIpCandidate(ip, ipStore);
   }
   for (const token of input.match(TOKEN_RE) ?? []) {
