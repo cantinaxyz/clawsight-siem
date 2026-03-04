@@ -33,6 +33,7 @@ Security defaults:
 - Set a strong `POSTGRES_PASSWORD` in `.env` before running compose.
 - Postgres is intentionally not exposed on host ports by default.
 - If you need host DB access for local debugging, bind loopback only (`127.0.0.1:5432:5432`) and never publish Postgres publicly.
+- DNS enrichment resolves registrable domains by default (`SIEM_DNS_ENRICHMENT_MODE=apex`) to reduce hostname-label data leakage risk.
 
 ### 2) Install Plugin and Link to SIEM
 

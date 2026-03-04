@@ -82,6 +82,7 @@ flowchart LR
   - Normalizes event shape and metadata.
   - Correlates events into spans/traces/executions.
   - Persists observables and raises alert candidates.
+  - DNS enrichment is egress-aware: blocked/error events are skipped and hostname resolution defaults to registrable-domain mode.
 - Guardrail API:
   - Receives policy decisions (`/api/v1/guardrails/decide`) for static rules and intent phases.
 - Query/API layer:

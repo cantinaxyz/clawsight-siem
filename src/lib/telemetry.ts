@@ -110,6 +110,29 @@ type TraceSpanInsert = {
   payloadSummary: Prisma.InputJsonValue | null;
 };
 
+const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
+  "co.uk",
+  "org.uk",
+  "ac.uk",
+  "gov.uk",
+  "co.jp",
+  "com.au",
+  "net.au",
+  "org.au",
+  "co.nz",
+  "com.br",
+  "com.mx",
+]);
+
+function normalizeDnsEnrichmentMode(value: string): "apex" | "full" {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "full" ? "full" : "apex";
+}
+
+const DNS_ENRICHMENT_MODE = normalizeDnsEnrichmentMode(
+  process.env.SIEM_DNS_ENRICHMENT_MODE || process.env.CLAWSIGHT_DNS_ENRICHMENT_MODE || "apex",
+);
+
 function normalizeKey(value: unknown): string | null {
   const raw = typeof value === "string" ? value.trim() : "";
   return raw.length > 0 ? raw : null;
@@ -334,6 +357,23 @@ function normalizeDomain(value: string): string {
   return value.trim().toLowerCase().replace(/\.$/, "");
 }
 
+function toRegistrableDomain(domain: string): string {
+  const labels = domain.split(".").filter(Boolean);
+  if (labels.length <= 2) return domain;
+  const lastTwo = labels.slice(-2).join(".");
+  if (MULTI_LABEL_PUBLIC_SUFFIXES.has(lastTwo) && labels.length >= 3) {
+    return labels.slice(-3).join(".");
+  }
+  return lastTwo;
+}
+
+function toDnsLookupDomain(domain: string): string {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) return "";
+  if (DNS_ENRICHMENT_MODE === "full") return normalized;
+  return toRegistrableDomain(normalized);
+}
+
 function isMissingDomainIpTableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const message = err.message.toLowerCase();
@@ -358,6 +398,8 @@ function isMissingTraceOrphanTableError(err: unknown): boolean {
 function shouldResolveDomainsForEvent(item: PreparedEvent): boolean {
   const category = String(item.row.category || "").trim().toLowerCase();
   const action = String(item.row.action || "").trim().toLowerCase();
+  const outcome = String(item.row.outcome || item.row.result || "").trim().toLowerCase();
+  if (outcome === "block" || outcome === "error") return false;
   if (category === "tool" || category === "payment") return true;
   if (category === "agent" || category === "gateway" || category === "diagnostic") return false;
   return (
@@ -390,18 +432,31 @@ async function resolveDomainIps(domains: string[]): Promise<Map<string, string[]
   const uniqueDomains = [...new Set(domains.map((domain) => normalizeDomain(domain)).filter(Boolean))]
     .filter((domain) => isIP(domain) === 0)
     .slice(0, 40);
+  const lookupByDomain = new Map<string, string>();
+  const uniqueLookupDomains = new Set<string>();
+  for (const domain of uniqueDomains) {
+    const lookupDomain = toDnsLookupDomain(domain);
+    if (!lookupDomain) continue;
+    lookupByDomain.set(domain, lookupDomain);
+    uniqueLookupDomains.add(lookupDomain);
+  }
+  const resolvedByLookupDomain = new Map<string, string[]>();
 
   await Promise.all(
-    uniqueDomains.map(async (domain) => {
+    [...uniqueLookupDomains].map(async (domain) => {
       try {
         const records = await lookupDomainWithTimeout(domain, 700);
         const ips = [...new Set(records.map((record) => record.address.trim()).filter((ip) => isIP(ip) !== 0))].slice(0, 8);
-        out.set(domain, ips);
+        resolvedByLookupDomain.set(domain, ips);
       } catch {
-        out.set(domain, []);
+        resolvedByLookupDomain.set(domain, []);
       }
     }),
   );
+
+  for (const [domain, lookupDomain] of lookupByDomain.entries()) {
+    out.set(domain, resolvedByLookupDomain.get(lookupDomain) || []);
+  }
 
   return out;
 }

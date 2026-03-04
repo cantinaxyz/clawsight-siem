@@ -146,6 +146,7 @@ Notes:
 - `SIEM_ADMIN_TOKEN`: required by operator configuration endpoints (`/api/safety/*`, `/api/intent/config`).
 - Authenticated read APIs (including `/api/security/alerts`) require a valid bearer token (admin/shared/tenant token depending on deployment mode).
 - `SIEM_API_TOKEN` and `CLAWSIGHT_API_TOKEN` remain legacy fallback aliases for compatibility; avoid using them in production.
+- `SIEM_DNS_ENRICHMENT_MODE=apex` (default) resolves registrable domains only for DNS enrichment; use `full` only when full-hostname resolution is explicitly required.
 - Postgres is not published by default in `docker-compose.yml`. If host access is required, bind explicitly to loopback only (for example `127.0.0.1:5432:5432`), never `0.0.0.0`.
 
 For intent-policy LLM extraction/alignment checks (and optional inbound prompt-injection classification):
